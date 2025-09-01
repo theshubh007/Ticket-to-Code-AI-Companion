@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "sourceMap": true,
+    "rootDir": "src/extension"
+  },
+  "include": ["src/extension/**/*"],
+  "exclude": ["src/webview", "node_modules"]
+}

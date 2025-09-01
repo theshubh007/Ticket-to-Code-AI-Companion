@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-extension",
+      "type": "shell",
+      "command": "node esbuild.config.mjs",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "build-webview",
+      "type": "shell",
+      "command": "npx vite build",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "build-all",
+      "dependsOn": ["build-extension", "build-webview"],
+      "dependsOrder": "parallel",
+      "group": { "kind": "build", "isDefault": true }
+    }
+  ]
+}
