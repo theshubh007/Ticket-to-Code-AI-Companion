@@ -14,11 +14,3 @@ export default defineConfig({
   },
   base: './',
 });
-```
-
-**8. Create `.gitignore`:**
-```
-node_modules/
-dist/
-.vscode-test/
-*.vsix
