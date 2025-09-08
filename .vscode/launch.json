@@ -8,6 +8,17 @@
       "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
       "outFiles": ["${workspaceFolder}/dist/extension/**/*.js"],
       "preLaunchTask": "build-all"
+    },
+    {
+      "name": "Watch + Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/dist/extension/**/*.js"],
+      "preLaunchTask": "build-all",
+      "env": {
+        "NODE_ENV": "development"
+      }
     }
   ]
 }

@@ -6,20 +6,66 @@
       "type": "shell",
       "command": "node esbuild.config.mjs",
       "group": "build",
-      "presentation": { "reveal": "silent" }
+      "presentation": { "reveal": "silent" },
+      "problemMatcher": "$tsc"
     },
     {
       "label": "build-webview",
       "type": "shell",
       "command": "npx vite build",
       "group": "build",
-      "presentation": { "reveal": "silent" }
+      "presentation": { "reveal": "silent" },
+      "problemMatcher": []
     },
     {
       "label": "build-all",
       "dependsOn": ["build-extension", "build-webview"],
       "dependsOrder": "parallel",
-      "group": { "kind": "build", "isDefault": true }
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "watch-extension",
+      "type": "shell",
+      "command": "node esbuild.config.mjs --watch",
+      "group": "build",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": {
+        "owner": "typescript",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\[watch\\] build started",
+          "endsPattern": "^\\[watch\\] build finished"
+        }
+      }
+    },
+    {
+      "label": "watch-webview",
+      "type": "shell",
+      "command": "npx vite build --watch",
+      "group": "build",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
     }
   ]
 }
