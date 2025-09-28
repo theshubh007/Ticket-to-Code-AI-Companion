@@ -29,7 +29,13 @@
           "name": "Orchestrator"
         }
       ]
-    }
+    },
+    "commands": [
+      {
+        "command": "ticket-to-code.resetCredentials",
+        "title": "Ticket to Code: Reset Credentials"
+      }
+    ]
   },
   "scripts": {
     "build:extension": "node esbuild.config.mjs",
