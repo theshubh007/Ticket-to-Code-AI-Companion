@@ -1,5 +1,11 @@
 import { OpenAIClient, ChatMessage } from '../clients/OpenAIClient';
-import { TicketData, CodeChunk, ImplementationGuide, ImplementationStep, FileReference } from '../types';
+import {
+  TicketData,
+  CodeChunk,
+  ImplementationGuide,
+  ImplementationStep,
+  FileReference,
+} from '../types';
 
 const SYSTEM_PROMPT = `You are a senior software engineer helping a developer implement a Jira ticket.
 You will be given a ticket description and relevant code snippets from the repository.
@@ -34,6 +40,20 @@ Rules:
 - Aim for 4-8 steps total
 - Be specific and technical, not generic`;
 
+interface RawGuideResponse {
+  steps: {
+    stepNumber: number;
+    title: string;
+    explanation: string;
+    fileReferences: {
+      filePath: string;
+      startLine: number;
+      endLine: number;
+      description: string;
+    }[];
+  }[];
+}
+
 export class AIEngine {
   constructor(private readonly openAI: OpenAIClient) {}
 
@@ -55,6 +75,74 @@ Generate a step-by-step implementation guide as JSON.`;
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userMessage },
     ];
+  }
+
+  async generateGuide(
+    ticket: TicketData,
+    chunks: CodeChunk[]
+  ): Promise<ImplementationGuide> {
+    const messages = this.buildPrompt(ticket, chunks);
+
+    let raw: string;
+    try {
+      raw = await this.openAI.chat(messages, 'json');
+    } catch (err) {
+      throw new Error(`LLM call failed: ${(err as Error).message}`);
+    }
+
+    const parsed = this._parseGuide(raw, ticket.key);
+    return parsed;
+  }
+
+  private _parseGuide(raw: string, ticketKey: string): ImplementationGuide {
+    let parsed: RawGuideResponse;
+
+    try {
+      // Strip markdown fences if model ignored instructions
+      const cleaned = raw
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+
+      parsed = JSON.parse(cleaned);
+    } catch {
+      throw new Error(
+        'Failed to parse LLM response as JSON. The model returned an unexpected format.'
+      );
+    }
+
+    if (!parsed.steps || !Array.isArray(parsed.steps)) {
+      throw new Error('LLM response missing required "steps" array.');
+    }
+
+    const steps: ImplementationStep[] = parsed.steps.map((s, i) => {
+      if (!s.title || !s.explanation) {
+        throw new Error(`Step ${i + 1} is missing required fields.`);
+      }
+
+      const fileReferences: FileReference[] = (s.fileReferences ?? []).map(
+        (ref) => ({
+          filePath: ref.filePath ?? '',
+          startLine: ref.startLine ?? 0,
+          endLine: ref.endLine ?? 0,
+          description: ref.description ?? '',
+        })
+      );
+
+      return {
+        stepNumber: s.stepNumber ?? i + 1,
+        title: s.title,
+        explanation: s.explanation,
+        fileReferences,
+      };
+    });
+
+    return {
+      ticketKey,
+      generatedAt: new Date().toISOString(),
+      steps,
+    };
   }
 
   private _formatTicket(ticket: TicketData): string {
@@ -89,9 +177,9 @@ Generate a step-by-step implementation guide as JSON.`;
           `File: ${chunk.filePath}`,
           `Lines: ${chunk.startLine}–${chunk.endLine}`,
           `Relevance Score: ${chunk.score?.toFixed(3) ?? 'N/A'}`,
-          `\`\`\``,
+          '```',
           chunk.content,
-          `\`\`\``,
+          '```',
         ].join('\n');
       })
       .join('\n\n');
