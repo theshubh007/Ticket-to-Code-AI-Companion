@@ -34,6 +34,10 @@
       {
         "command": "ticket-to-code.resetCredentials",
         "title": "Ticket to Code: Reset Credentials"
+      },
+      {
+        "command": "ticket-to-code.clearIndex",
+        "title": "Ticket to Code: Clear Embedding Index"
       }
     ]
   },
