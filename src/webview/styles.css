@@ -1,0 +1,414 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-sideBar-background);
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* ─── App Layout ─────────────────────────────────────────────────── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Panel ──────────────────────────────────────────────────────── */
+
+.panel {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #333);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-number {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vscode-sideBarSectionHeader-foreground);
+  flex: 1;
+}
+
+.panel-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.panel-badge.success {
+  background: var(--vscode-testing-iconPassed, #4caf50);
+  color: #fff;
+}
+
+/* ─── Input Row ──────────────────────────────────────────────────── */
+
+.input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.text-input {
+  flex: 1;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  border-radius: 2px;
+  outline: none;
+  min-width: 0;
+}
+
+.text-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.text-input:disabled {
+  opacity: 0.5;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────── */
+
+.btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.btn-primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  min-width: 54px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── Spinner ────────────────────────────────────────────────────── */
+
+.btn-loading {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.spinner-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--vscode-button-foreground);
+  animation: blink 1.2s infinite;
+}
+
+.spinner-dot:nth-child(2) { animation-delay: 0.2s; }
+.spinner-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0.2; }
+  40% { opacity: 1; }
+}
+
+/* ─── Error Banner ───────────────────────────────────────────────── */
+
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+  padding: 6px 8px;
+  border-radius: 2px;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+}
+
+.error-icon {
+  color: var(--vscode-errorForeground, #f48771);
+  flex-shrink: 0;
+}
+
+/* ─── Ticket Card ────────────────────────────────────────────────── */
+
+.ticket-card {
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.04));
+  border: 1px solid var(--vscode-widget-border, #444);
+  border-radius: 3px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ticket-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ticket-key {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-textLink-foreground);
+}
+
+.ticket-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  white-space: nowrap;
+}
+
+.ticket-summary {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.ticket-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.label-chip {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--vscode-editor-selectionBackground);
+  color: var(--vscode-foreground);
+}
+
+.ticket-description {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground);
+  white-space: pre-wrap;
+}
+
+.ticket-description.collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ticket-description.expanded {
+  display: block;
+}
+
+.ticket-ac {
+  border-top: 1px solid var(--vscode-widget-border, #444);
+  padding-top: 6px;
+}
+
+.ticket-ac-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 3px;
+}
+
+.ticket-ac-content {
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* ─── Snippet Card ───────────────────────────────────────────────── */
+
+.snippet-card {
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.04));
+  border: 1px solid var(--vscode-widget-border, #444);
+  border-radius: 3px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: border-color 0.1s;
+}
+
+.snippet-card:hover {
+  border-color: var(--vscode-focusBorder);
+}
+
+.snippet-path {
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-textLink-foreground);
+  word-break: break-all;
+}
+
+.snippet-lines {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 2px;
+}
+
+.snippet-score {
+  font-size: 10px;
+  color: var(--vscode-testing-iconPassed, #4caf50);
+  margin-top: 2px;
+}
+
+.snippet-preview {
+  margin-top: 6px;
+  font-size: 10px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-textCodeBlock-background, #1e1e1e);
+  padding: 4px 6px;
+  border-radius: 2px;
+  white-space: pre;
+  overflow: hidden;
+  max-height: 48px;
+}
+
+/* ─── Progress ───────────────────────────────────────────────────── */
+
+.progress-bar-wrap {
+  height: 3px;
+  background: var(--vscode-progressBar-background, #333);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--vscode-button-background);
+  transition: width 0.2s ease;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ─── Step Card ──────────────────────────────────────────────────── */
+
+.step-card {
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.04));
+  border: 1px solid var(--vscode-widget-border, #444);
+  border-radius: 3px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.step-explanation {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground);
+}
+
+.file-ref {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  padding: 3px 0;
+}
+
+.file-ref:hover .file-ref-path {
+  text-decoration: underline;
+}
+
+.file-ref-path {
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-textLink-foreground);
+  word-break: break-all;
+}
+
+.file-ref-lines {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.status-msg {
+  font-size: 11px;
+  color: var(--vscode-testing-iconPassed, #4caf50);
+}
