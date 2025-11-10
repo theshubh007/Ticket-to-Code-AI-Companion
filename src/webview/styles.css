@@ -412,3 +412,123 @@ body {
   font-size: 11px;
   color: var(--vscode-testing-iconPassed, #4caf50);
 }
+
+/* ─── Guide ──────────────────────────────────────────────────────── */
+
+.guide-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guide-meta {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.step-number {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-chevron {
+  font-size: 9px;
+  color: var(--vscode-descriptionForeground);
+  margin-left: auto;
+}
+
+.step-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-widget-border, #444);
+  margin-top: 8px;
+}
+
+.file-refs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-refs-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.file-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  padding: 5px 7px;
+  border-radius: 2px;
+  border: 1px solid var(--vscode-widget-border, #444);
+  background: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+.file-ref:hover {
+  border-color: var(--vscode-focusBorder);
+}
+
+.file-ref-icon {
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground);
+}
+
+.file-ref-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.file-ref-desc {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+}
+
+.snippet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.snippet-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.snippet-preview--expanded {
+  max-height: none;
+}
