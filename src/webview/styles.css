@@ -532,3 +532,12 @@ body {
 .snippet-preview--expanded {
   max-height: none;
 }
+
+/* ─── Shared ─────────────────────────────────────────────────────── */
+
+.spinner-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
