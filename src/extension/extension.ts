@@ -10,19 +10,23 @@ import { OpenAIClient } from './clients/OpenAIClient';
 export function activate(context: vscode.ExtensionContext) {
   console.log('Ticket to Code: activating...');
 
-  // Instantiate core modules
   const security = new Security(context.secrets);
   const cache = new CacheManager(context.globalStoragePath);
 
-  // Clients — OpenAI key resolved lazily inside Security
-  const openAIClient = new OpenAIClient({ apiKey: '' }); // key injected at call time
+  // OpenAI client with runtime key resolution from SecretStorage
+  const openAIClient = new OpenAIClient({ apiKey: '' });
+  openAIClient.setKeyResolver(async () => {
+    const key = await security.getOpenAIKey();
+    if (!key) {
+      throw new Error('OpenAI API key not configured. Please re-enter credentials.');
+    }
+    return key;
+  });
 
-  // Engine modules
   const ticketManager = new TicketManager(security, cache);
   const codeAnalyzer = new CodeAnalyzer(openAIClient, cache);
   const aiEngine = new AIEngine(openAIClient);
 
-  // Sidebar
   const provider = new SidebarProvider(
     context.extensionUri,
     security,
@@ -38,7 +42,6 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // Reset credentials command
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'ticket-to-code.resetCredentials',
@@ -54,14 +57,13 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // Clear index command
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'ticket-to-code.clearIndex',
       async () => {
         await cache.clearEmbeddingIndex();
         vscode.window.showInformationMessage(
-          'Ticket to Code: embedding index cleared. Next analysis will re-index from scratch.'
+          'Ticket to Code: embedding index cleared.'
         );
       }
     )

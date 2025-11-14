@@ -10,11 +10,22 @@ export interface ChatMessage {
 }
 
 export class OpenAIClient {
-  private readonly baseHostname = 'api.openai.com';
+  private keyResolver?: () => Promise<string>;
 
-  constructor(private readonly config: OpenAIConfig) {}
+  constructor(private config: OpenAIConfig) {}
 
-  // Batch embed up to 2048 inputs per request (OpenAI limit)
+  // Allow late binding of key resolver so Security module can inject it
+  setKeyResolver(resolver: () => Promise<string>) {
+    this.keyResolver = resolver;
+  }
+
+  private async resolveKey(): Promise<string> {
+    if (this.keyResolver) {
+      return this.keyResolver();
+    }
+    return this.config.apiKey;
+  }
+
   async embed(texts: string[]): Promise<number[][]> {
     const batches = this._chunk(texts, 2048);
     const results: number[][] = [];
@@ -55,16 +66,18 @@ export class OpenAIClient {
     return result.choices[0].message.content;
   }
 
-  private _post(path: string, body: unknown): Promise<unknown> {
+  private async _post(path: string, body: unknown): Promise<unknown> {
+    const apiKey = await this.resolveKey();
+
     return new Promise((resolve, reject) => {
       const payload = JSON.stringify(body);
 
       const options = {
-        hostname: this.baseHostname,
+        hostname: 'api.openai.com',
         path,
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
         },
