@@ -50,7 +50,8 @@
     "dev": "concurrently \"npm run watch:extension\" \"npm run watch:webview\"",
     "vscode:prepublish": "node esbuild.config.mjs --production && vite build",
     "test": "jest",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:e2e": "node ./dist/extension/__tests__/e2e/extension.test.js"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
@@ -59,6 +60,7 @@
     "@types/react-dom": "^18.0.0",
     "@types/vscode": "^1.85.0",
     "@vitejs/plugin-react": "^4.0.0",
+    "@vscode/test-electron": "^2.5.2",
     "concurrently": "^8.0.0",
     "esbuild": "^0.20.0",
     "jest": "^30.2.0",
