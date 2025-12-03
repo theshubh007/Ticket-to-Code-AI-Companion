@@ -1,7 +1,7 @@
 import { JiraClient } from '../clients/JiraClient';
 import { CacheManager } from './CacheManager';
 import { Security } from './Security';
-import { TicketData } from '../types';
+import { TicketData, TicketSummary } from '../types';
 import { adfToText } from '../utils/adfToText';
 
 export class TicketManager {
@@ -42,6 +42,23 @@ export class TicketManager {
 
     await this.cache.saveTicket(issueKey, ticket);
     return ticket;
+  }
+
+  async listAssignedTickets(): Promise<TicketSummary[]> {
+    const jiraConfig = await this.security.getJiraConfig();
+    if (!jiraConfig) {
+      throw new Error('Jira credentials not configured.');
+    }
+
+    const client = new JiraClient(jiraConfig);
+    const issues = await client.getMyIssues();
+    return issues.map((raw) => ({
+      key: raw.key,
+      summary: raw.fields.summary ?? '',
+      status: raw.fields.status?.name ?? 'Unknown',
+      priority: raw.fields.priority?.name ?? 'Unknown',
+      issueType: raw.fields.issuetype?.name ?? 'Unknown',
+    }));
   }
 
   private _extractAcceptanceCriteria(fields: Record<string, unknown>): string {

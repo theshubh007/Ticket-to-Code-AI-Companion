@@ -1,5 +1,13 @@
 // ─── Jira ────────────────────────────────────────────────────────────────────
 
+export interface TicketSummary {
+  key: string;
+  summary: string;
+  status: string;
+  priority: string;
+  issueType: string;
+}
+
 export interface TicketData {
   key: string;
   summary: string;
@@ -55,6 +63,7 @@ export interface ImplementationGuide {
 
 export type MessageFromWebview =
   | { command: 'ping' }
+  | { command: 'listTickets' }
   | { command: 'fetchTicket'; payload: { key: string } }
   | { command: 'analyzeRepo'; payload: { ticketDescription: string } }
   | { command: 'generateGuide' }
@@ -62,6 +71,8 @@ export type MessageFromWebview =
 
 export type MessageToWebview =
   | { command: 'pong'; payload: string }
+  | { command: 'ticketList'; payload: TicketSummary[] }
+  | { command: 'ticketListError'; payload: string }
   | { command: 'ticketResult'; payload: TicketData }
   | { command: 'ticketError'; payload: string }
   | { command: 'analysisResult'; payload: CodeChunk[] }

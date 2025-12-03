@@ -29,14 +29,30 @@ export class JiraClient {
       `${this.config.email}:${this.config.apiToken}`
     ).toString('base64');
 
-    return this._get(url, {
+    return this._get<RawJiraIssue>(url, {
       Authorization: `Basic ${token}`,
       Accept: 'application/json',
       'Content-Type': 'application/json',
     });
   }
 
-  private _get(url: string, headers: Record<string, string>): Promise<RawJiraIssue> {
+  async getMyIssues(): Promise<RawJiraIssue[]> {
+    const jql = encodeURIComponent('assignee=currentUser() ORDER BY updated DESC');
+    const fields = 'summary,status,priority,labels,issuetype';
+    const url = `${this.config.baseUrl}/rest/api/3/search/jql?jql=${jql}&fields=${fields}&maxResults=50`;
+    const token = Buffer.from(
+      `${this.config.email}:${this.config.apiToken}`
+    ).toString('base64');
+
+    const result = await this._get<{ issues: RawJiraIssue[] }>(url, {
+      Authorization: `Basic ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    });
+    return result.issues ?? [];
+  }
+
+  private _get<T>(url: string, headers: Record<string, string>): Promise<T> {
     return new Promise((resolve, reject) => {
       const parsedUrl = new URL(url);
       const isHttps = parsedUrl.protocol === 'https:';
@@ -57,7 +73,7 @@ export class JiraClient {
         res.on('end', () => {
           if (res.statusCode === 200) {
             try {
-              resolve(JSON.parse(data));
+              resolve(JSON.parse(data) as T);
             } catch {
               reject(new Error('Failed to parse Jira response as JSON'));
             }
