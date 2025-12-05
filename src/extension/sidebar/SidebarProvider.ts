@@ -54,6 +54,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           case 'ping':
             this._post({ command: 'pong', payload: 'Connection established ✓' });
             break;
+          case 'listTickets':
+            await this._handleListTickets();
+            break;
           case 'fetchTicket':
             await this._handleFetchTicket(message.payload.key);
             break;
@@ -74,6 +77,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
       }
     );
+  }
+
+  private async _handleListTickets(): Promise<void> {
+    const hasCredentials = await this._security.hasAllCredentials();
+    if (!hasCredentials) {
+      const jiraOk = await this._security.promptJiraConfig();
+      if (!jiraOk) {
+        this._post({ command: 'ticketListError', payload: 'Jira credentials are required.' });
+        return;
+      }
+      const openAiOk = await this._security.promptOpenAIKey();
+      if (!openAiOk) {
+        this._post({ command: 'ticketListError', payload: 'OpenAI API key is required.' });
+        return;
+      }
+    }
+
+    try {
+      const tickets = await this._ticketManager.listAssignedTickets();
+      this._post({ command: 'ticketList', payload: tickets });
+    } catch (err) {
+      this._post({ command: 'ticketListError', payload: (err as Error).message });
+    }
   }
 
   private async _handleFetchTicket(key: string): Promise<void> {

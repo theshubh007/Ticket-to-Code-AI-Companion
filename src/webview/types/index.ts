@@ -1,3 +1,11 @@
+export interface TicketSummary {
+  key: string;
+  summary: string;
+  status: string;
+  priority: string;
+  issueType: string;
+}
+
 export interface TicketData {
   key: string;
   summary: string;
