@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { postMessage } from './vscodeApi';
-import { TicketData, CodeChunk, ImplementationGuide } from './types';
+import { TicketData, TicketSummary, CodeChunk, ImplementationGuide } from './types';
 import { TicketPanel } from './components/TicketPanel/TicketPanel';
 import { AnalysisPanel } from './components/AnalysisPanel/AnalysisPanel';
 import { GuidePanel } from './components/GuidePanel/GuidePanel';
 
 export type AppState = {
+  ticketList: TicketSummary[] | null;
+  ticketListLoading: boolean;
+  ticketListError: string | null;
+
   ticket: TicketData | null;
   ticketError: string | null;
   ticketLoading: boolean;
@@ -21,6 +25,9 @@ export type AppState = {
 };
 
 const initialState: AppState = {
+  ticketList: null,
+  ticketListLoading: true,
+  ticketListError: null,
   ticket: null,
   ticketError: null,
   ticketLoading: false,
@@ -40,6 +47,11 @@ export function App() {
     setState((prev) => ({ ...prev, ...partial }));
   }, []);
 
+  // Fetch assigned tickets automatically when the panel first opens
+  useEffect(() => {
+    postMessage('listTickets');
+  }, []);
+
   // Central message listener — all extension → UI messages land here
   useEffect(() => {
     const handler = (
@@ -48,6 +60,21 @@ export function App() {
       const { command, payload } = event.data;
 
       switch (command) {
+        case 'ticketList':
+          updateState({
+            ticketList: payload as TicketSummary[],
+            ticketListLoading: false,
+            ticketListError: null,
+          });
+          break;
+
+        case 'ticketListError':
+          updateState({
+            ticketListError: payload as string,
+            ticketListLoading: false,
+          });
+          break;
+
         case 'ticketResult':
           updateState({
             ticket: payload as TicketData,
@@ -107,9 +134,18 @@ export function App() {
     return () => window.removeEventListener('message', handler);
   }, [updateState]);
 
+  function handleRetryList() {
+    updateState({ ticketListLoading: true, ticketListError: null });
+    postMessage('listTickets');
+  }
+
   function handleFetchTicket(key: string) {
     updateState({ ticketLoading: true, ticketError: null, ticket: null });
     postMessage('fetchTicket', { key });
+  }
+
+  function handleClearTicket() {
+    updateState({ ticket: null, ticketError: null });
   }
 
   function handleAnalyzeRepo() {
@@ -136,10 +172,15 @@ export function App() {
   return (
     <div className="app">
       <TicketPanel
+        ticketList={state.ticketList}
+        ticketListLoading={state.ticketListLoading}
+        ticketListError={state.ticketListError}
         ticket={state.ticket}
         error={state.ticketError}
         loading={state.ticketLoading}
         onFetch={handleFetchTicket}
+        onClearTicket={handleClearTicket}
+        onRetryList={handleRetryList}
       />
       <AnalysisPanel
         chunks={state.chunks}
