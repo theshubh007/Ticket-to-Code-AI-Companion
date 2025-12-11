@@ -1,4 +1,5 @@
 node_modules/
 dist/
 .vscode-test/
-*.vsix
+*.vsix.DS_Store
+graphify-out/
