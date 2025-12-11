@@ -192,6 +192,59 @@ body {
   flex-shrink: 0;
 }
 
+/* ─── Ticket List ────────────────────────────────────────────────── */
+
+.ticket-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+}
+
+.ticket-list-row {
+  width: 100%;
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.04));
+  border: 1px solid var(--vscode-widget-border, #444);
+  border-radius: 3px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: border-color 0.1s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  color: inherit;
+  font-family: var(--vscode-font-family);
+  font-size: inherit;
+}
+
+.ticket-list-row:hover:not(:disabled) {
+  border-color: var(--vscode-focusBorder);
+}
+
+.ticket-list-row:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ticket-list-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ticket-list-summary {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.ticket-back {
+  align-self: flex-start;
+}
+
 /* ─── Ticket Card ────────────────────────────────────────────────── */
 
 .ticket-card {
