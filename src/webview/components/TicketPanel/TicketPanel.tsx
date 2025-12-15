@@ -46,6 +46,26 @@ export function TicketPanel({
       <div className="panel-header">
         <span className="panel-number">①</span>
         <h2 className="panel-title">Jira Ticket</h2>
+        {view === 'list' && (
+          <button
+            className="icon-btn"
+            onClick={onRetryList}
+            disabled={ticketListLoading}
+            aria-label="Refresh assigned tickets"
+            title="Refresh assigned tickets"
+          >
+            <svg
+              className={`icon-refresh ${ticketListLoading ? 'spinning' : ''}`}
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 4a8 8 0 0 1 7.75 6h-2.2A6 6 0 1 0 18 13h2a8 8 0 1 1-2.4-5.7L15 10h7V3l-2.78 2.78A9.92 9.92 0 0 0 12 2a10 10 0 1 0 10 10h-2A8 8 0 0 1 12 4Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+        )}
         {ticket && view === 'detail' && (
           <span className="panel-badge success">Fetched</span>
         )}
