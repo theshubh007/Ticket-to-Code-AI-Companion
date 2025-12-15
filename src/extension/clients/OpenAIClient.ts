@@ -11,6 +11,7 @@ export interface ChatMessage {
 
 export class OpenAIClient {
   private keyResolver?: () => Promise<string>;
+  private agent = new https.Agent({ keepAlive: true, maxSockets: 5 });
 
   constructor(private config: OpenAIConfig) {}
 
@@ -32,9 +33,9 @@ export class OpenAIClient {
 
     for (const batch of batches) {
       const response = await this._post('/v1/embeddings', {
-        model: 'text-embedding-3-small',
+        model: 'Qwen/Qwen3-Embedding-8B',
         input: batch,
-      });
+      }, 120000, 'api.tokenfactory.nebius.com');
       const embeddings = (response as {
         data: { embedding: number[] }[];
       }).data.map((d) => d.embedding);
@@ -47,11 +48,30 @@ export class OpenAIClient {
   async chat(
     messages: ChatMessage[],
     responseFormat: 'text' | 'json' = 'text',
-    timeoutMs = 30000
+    timeoutMs = 120000
   ): Promise<string> {
+    // Map internal ChatMessage format to Nebius expected format
+    const formattedMessages = messages.map(msg => {
+      if (msg.role === 'user') {
+        return {
+          role: msg.role,
+          content: [
+            {
+              type: 'text',
+              text: msg.content
+            }
+          ]
+        };
+      }
+      return {
+        role: msg.role,
+        content: msg.content
+      };
+    });
+
     const body: Record<string, unknown> = {
-      model: 'gpt-4o-mini',
-      messages,
+      model: 'nvidia/nemotron-3-super-120b-a12b',
+      messages: formattedMessages,
       temperature: 0.2,
     };
 
@@ -59,7 +79,7 @@ export class OpenAIClient {
       body.response_format = { type: 'json_object' };
     }
 
-    const response = await this._post('/v1/chat/completions', body, timeoutMs);
+    const response = await this._post('/v1/chat/completions', body, timeoutMs, 'api.tokenfactory.us-central1.nebius.com');
     const result = response as {
       choices: { message: { content: string } }[];
     };
@@ -67,55 +87,71 @@ export class OpenAIClient {
     return result.choices[0].message.content;
   }
 
-  private async _post(path: string, body: unknown, timeoutMs = 30000): Promise<unknown> {
+  private async _post(path: string, body: unknown, timeoutMs = 120000, hostname = 'api.tokenfactory.nebius.com', retries = 3): Promise<unknown> {
     const apiKey = await this.resolveKey();
 
-    return new Promise((resolve, reject) => {
-      const payload = JSON.stringify(body);
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await new Promise((resolve, reject) => {
+          const payload = JSON.stringify(body);
 
-      const options = {
-        hostname: 'api.openai.com',
-        path,
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
-      };
+          const options = {
+            hostname,
+            path,
+            method: 'POST',
+            agent: this.agent,
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(payload),
+            },
+          };
 
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', (chunk) => (data += chunk));
-        res.on('end', () => {
-          if (res.statusCode === 200) {
-            try {
-              resolve(JSON.parse(data));
-            } catch {
-              reject(new Error('Failed to parse OpenAI response as JSON'));
-            }
-          } else if (res.statusCode === 401) {
-            reject(new Error('OpenAI authentication failed. Check your API key.'));
-          } else if (res.statusCode === 429) {
-            reject(new Error('OpenAI rate limit hit. Please wait and try again.'));
-          } else {
-            reject(new Error(`OpenAI API error: HTTP ${res.statusCode} — ${data}`));
-          }
+          const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => (data += chunk));
+            res.on('end', () => {
+              if (res.statusCode === 200) {
+                try {
+                  resolve(JSON.parse(data));
+                } catch {
+                  reject(new Error('Failed to parse TokenFactory response as JSON'));
+                }
+              } else if (res.statusCode === 401) {
+                reject(new Error('TokenFactory authentication failed. Check your API key.'));
+              } else if (res.statusCode === 429) {
+                reject(new Error('TokenFactory rate limit hit. Please wait and try again.'));
+              } else {
+                reject(new Error(`TokenFactory API error: HTTP ${res.statusCode} — ${data}`));
+              }
+            });
+          });
+
+          req.on('error', (err) => {
+            reject(new Error(`Network error reaching TokenFactory: ${err.message}`));
+          });
+
+          req.setTimeout(timeoutMs, () => {
+            req.destroy();
+            reject(new Error(`TokenFactory request timed out after ${timeoutMs / 1000}s`));
+          });
+
+          req.write(payload);
+          req.end();
         });
-      });
-
-      req.on('error', (err) => {
-        reject(new Error(`Network error reaching OpenAI: ${err.message}`));
-      });
-
-      req.setTimeout(timeoutMs, () => {
-        req.destroy();
-        reject(new Error(`OpenAI request timed out after ${timeoutMs / 1000}s`));
-      });
-
-      req.write(payload);
-      req.end();
-    });
+      } catch (err: any) {
+        const isTransient = err.message.includes('socket hang up') || 
+                          err.message.includes('ECONNRESET') || 
+                          err.message.includes('timed out');
+        
+        if (isTransient && i < retries - 1) {
+          // Exponential backoff
+          await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+          continue;
+        }
+        throw err;
+      }
+    }
   }
 
   private _chunk<T>(arr: T[], size: number): T[][] {

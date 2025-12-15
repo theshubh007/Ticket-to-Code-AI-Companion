@@ -4,7 +4,7 @@ const KEYS = {
   jiraBaseUrl: 'jira-base-url',
   jiraEmail: 'jira-email',
   jiraApiToken: 'jira-api-token',
-  openAiApiKey: 'openai-api-key',
+  nebiusApiKey: 'nebius-api-key',
 } as const;
 
 type SecretKey = keyof typeof KEYS;
@@ -40,8 +40,8 @@ export class Security {
     return { baseUrl, email, apiToken };
   }
 
-  async getOpenAIKey(): Promise<string | null> {
-    return (await this.get('openAiApiKey')) ?? null;
+  async getNebiusKey(): Promise<string | null> {
+    return (await this.get('nebiusApiKey')) ?? null;
   }
 
   // Prompts user to enter credentials via VS Code input boxes
@@ -77,23 +77,23 @@ export class Security {
     return true;
   }
 
-  async promptOpenAIKey(): Promise<boolean> {
+  async promptNebiusKey(): Promise<boolean> {
     const key = await vscode.window.showInputBox({
-      title: 'OpenAI API Key',
-      prompt: 'Enter your OpenAI API key (from platform.openai.com/api-keys)',
+      title: 'Nebius TokenFactory API Key',
+      prompt: 'Enter your Nebius TokenFactory API key',
       password: true,
       ignoreFocusOut: true,
     });
     if (!key) return false;
 
-    await this.set('openAiApiKey', key);
+    await this.set('nebiusApiKey', key);
     return true;
   }
 
   // Returns true if all credentials are present
   async hasAllCredentials(): Promise<boolean> {
     const jira = await this.getJiraConfig();
-    const openai = await this.getOpenAIKey();
-    return jira !== null && openai !== null;
+    const nebius = await this.getNebiusKey();
+    return jira !== null && nebius !== null;
   }
 }

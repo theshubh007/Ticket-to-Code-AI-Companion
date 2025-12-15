@@ -16,9 +16,9 @@ export function activate(context: vscode.ExtensionContext) {
   // OpenAI client with runtime key resolution from SecretStorage
   const openAIClient = new OpenAIClient({ apiKey: '' });
   openAIClient.setKeyResolver(async () => {
-    const key = await security.getOpenAIKey();
+    const key = await security.getNebiusKey();
     if (!key) {
-      throw new Error('OpenAI API key not configured. Please re-enter credentials.');
+      throw new Error('Nebius API key not configured. Please re-enter credentials.');
     }
     return key;
   });
@@ -51,7 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
         await security.delete('jiraBaseUrl');
         await security.delete('jiraEmail');
         await security.delete('jiraApiToken');
-        await security.delete('openAiApiKey');
+        await security.delete('nebiusApiKey');
         vscode.window.showInformationMessage(
           'Ticket to Code: all credentials cleared.'
         );

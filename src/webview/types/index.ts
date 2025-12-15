@@ -44,3 +44,9 @@ export interface ImplementationGuide {
   generatedAt: string;
   steps: ImplementationStep[];
 }
+
+export interface FileDiff {
+  filePath: string;
+  oldCode: string;
+  newCode: string;
+}
