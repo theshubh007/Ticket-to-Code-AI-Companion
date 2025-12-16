@@ -42,6 +42,7 @@ const initialState: AppState = {
 
 export function App() {
   const [state, setState] = useState<AppState>(initialState);
+  const [ticketSearch, setTicketSearch] = useState('');
 
   const updateState = useCallback((partial: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...partial }));
@@ -139,6 +140,10 @@ export function App() {
     postMessage('listTickets');
   }
 
+  function handleTicketSearchChange(value: string) {
+    setTicketSearch(value);
+  }
+
   function handleFetchTicket(key: string) {
     updateState({ ticketLoading: true, ticketError: null, ticket: null });
     postMessage('fetchTicket', { key });
@@ -169,15 +174,30 @@ export function App() {
     postMessage('openFile', { filePath, startLine, endLine });
   }
 
+  const normalizedSearch = ticketSearch.trim().toLowerCase();
+  const filteredTicketList = (state.ticketList ?? []).filter((ticket) => {
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    return (
+      ticket.key.toLowerCase().includes(normalizedSearch) ||
+      ticket.summary.toLowerCase().includes(normalizedSearch)
+    );
+  });
+
   return (
     <div className="app">
       <TicketPanel
-        ticketList={state.ticketList}
+        ticketList={filteredTicketList}
+        totalTicketCount={state.ticketList?.length ?? 0}
+        ticketSearch={ticketSearch}
         ticketListLoading={state.ticketListLoading}
         ticketListError={state.ticketListError}
         ticket={state.ticket}
         error={state.ticketError}
         loading={state.ticketLoading}
+        onTicketSearchChange={handleTicketSearchChange}
         onFetch={handleFetchTicket}
         onClearTicket={handleClearTicket}
         onRetryList={handleRetryList}

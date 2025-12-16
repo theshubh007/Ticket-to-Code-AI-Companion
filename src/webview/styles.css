@@ -126,6 +126,10 @@ body {
   opacity: 0.5;
 }
 
+.ticket-search-input {
+  margin-bottom: 2px;
+}
+
 /* ─── Buttons ────────────────────────────────────────────────────── */
 
 .btn {

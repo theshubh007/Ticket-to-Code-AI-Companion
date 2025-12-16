@@ -5,11 +5,14 @@ import { ErrorBanner } from '../shared/ErrorBanner';
 
 interface Props {
   ticketList: TicketSummary[] | null;
+  totalTicketCount: number;
+  ticketSearch: string;
   ticketListLoading: boolean;
   ticketListError: string | null;
   ticket: TicketData | null;
   error: string | null;
   loading: boolean;
+  onTicketSearchChange: (value: string) => void;
   onFetch: (key: string) => void;
   onClearTicket: () => void;
   onRetryList: () => void;
@@ -17,11 +20,14 @@ interface Props {
 
 export function TicketPanel({
   ticketList,
+  totalTicketCount,
+  ticketSearch,
   ticketListLoading,
   ticketListError,
   ticket,
   error,
   loading,
+  onTicketSearchChange,
   onFetch,
   onClearTicket,
   onRetryList,
@@ -73,6 +79,17 @@ export function TicketPanel({
 
       {view === 'list' && (
         <>
+          {!ticketListLoading && !ticketListError && ticketList !== null && totalTicketCount > 0 && (
+            <input
+              className="text-input ticket-search-input"
+              type="text"
+              value={ticketSearch}
+              onChange={(event) => onTicketSearchChange(event.target.value)}
+              placeholder="Search by key or summary"
+              aria-label="Filter assigned tickets"
+            />
+          )}
+
           {ticketListLoading && (
             <Spinner label="Loading your tickets…" />
           )}
@@ -87,8 +104,10 @@ export function TicketPanel({
           )}
 
           {!ticketListLoading && !ticketListError && ticketList !== null && (
-            ticketList.length === 0 ? (
+            totalTicketCount === 0 ? (
               <p className="hint">No tickets currently assigned to you.</p>
+            ) : ticketList.length === 0 ? (
+              <p className="hint">No tickets match your search.</p>
             ) : (
               <ul className="ticket-list">
                 {ticketList.map((t) => (
