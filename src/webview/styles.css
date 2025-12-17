@@ -194,6 +194,35 @@ body {
 
 /* ─── Ticket List ────────────────────────────────────────────────── */
 
+.manual-fetch-form {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--vscode-widget-border, #444);
+}
+
+.manual-fetch-form .input {
+  flex: 1;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--vscode-font-family);
+  border-radius: 2px;
+  outline: none;
+}
+
+.manual-fetch-form .input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.btn-sm {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
 .ticket-list {
   display: flex;
   flex-direction: column;

@@ -1,0 +1,91 @@
+.diff-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 10px;
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+.diff-file {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.diff-file-header {
+  background-color: var(--vscode-sideBar-background);
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-weight: bold;
+}
+
+.diff-file-path {
+  font-family: monospace;
+}
+
+.diff-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.diff-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow-x: auto;
+}
+
+.diff-column {
+  border-right: 1px solid var(--vscode-panel-border);
+}
+
+.diff-column:last-child {
+  border-right: none;
+}
+
+.diff-line {
+  display: flex;
+  white-space: pre;
+  min-height: 1.2em;
+}
+
+.line-number {
+  width: 40px;
+  text-align: right;
+  padding-right: 10px;
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+  background-color: var(--vscode-editorLineNumber-foreground);
+  opacity: 0.5;
+}
+
+.line-content {
+  padding-left: 8px;
+  flex: 1;
+}
+
+.diff-line.removed {
+  background-color: var(--vscode-diffEditor-removedTextBackground);
+  color: var(--vscode-diffEditor-removedTextForeground, var(--vscode-editor-foreground));
+}
+
+.diff-line.added {
+  background-color: var(--vscode-diffEditor-insertedTextBackground);
+  color: var(--vscode-diffEditor-insertedTextForeground, var(--vscode-editor-foreground));
+}
+
+.diff-line.empty {
+  background-color: var(--vscode-editor-background);
+}
+
+.diff-footer {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px;
+}

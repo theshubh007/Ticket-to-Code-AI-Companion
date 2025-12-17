@@ -28,6 +28,7 @@ export function TicketPanel({
 }: Props) {
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [expanded, setExpanded] = useState(false);
+  const [manualKey, setManualKey] = useState('');
 
   useEffect(() => {
     if (ticket && !loading) {
@@ -39,6 +40,14 @@ export function TicketPanel({
   function handleBack() {
     setView('list');
     onClearTicket();
+    setManualKey('');
+  }
+
+  function handleManualFetch(e: React.FormEvent) {
+    e.preventDefault();
+    if (manualKey.trim()) {
+      onFetch(manualKey.trim().toUpperCase());
+    }
   }
 
   return (
@@ -53,6 +62,24 @@ export function TicketPanel({
 
       {view === 'list' && (
         <>
+          <form className="manual-fetch-form" onSubmit={handleManualFetch}>
+            <input
+              type="text"
+              className="input"
+              placeholder="Enter issue key (e.g. SCRUM-4)"
+              value={manualKey}
+              onChange={(e) => setManualKey(e.target.value)}
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              className="btn btn-secondary btn-sm"
+              disabled={loading || !manualKey.trim()}
+            >
+              Fetch
+            </button>
+          </form>
+
           {ticketListLoading && (
             <Spinner label="Loading your tickets…" />
           )}
@@ -68,7 +95,7 @@ export function TicketPanel({
 
           {!ticketListLoading && !ticketListError && ticketList !== null && (
             ticketList.length === 0 ? (
-              <p className="hint">No tickets currently assigned to you.</p>
+              <p className="hint">No tickets currently assigned to you. Try entering a ticket key above.</p>
             ) : (
               <ul className="ticket-list">
                 {ticketList.map((t) => (
