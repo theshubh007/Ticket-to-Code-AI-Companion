@@ -46,7 +46,8 @@ export class OpenAIClient {
 
   async chat(
     messages: ChatMessage[],
-    responseFormat: 'text' | 'json' = 'text'
+    responseFormat: 'text' | 'json' = 'text',
+    timeoutMs = 30000
   ): Promise<string> {
     const body: Record<string, unknown> = {
       model: 'gpt-4o-mini',
@@ -58,7 +59,7 @@ export class OpenAIClient {
       body.response_format = { type: 'json_object' };
     }
 
-    const response = await this._post('/v1/chat/completions', body);
+    const response = await this._post('/v1/chat/completions', body, timeoutMs);
     const result = response as {
       choices: { message: { content: string } }[];
     };
@@ -66,7 +67,7 @@ export class OpenAIClient {
     return result.choices[0].message.content;
   }
 
-  private async _post(path: string, body: unknown): Promise<unknown> {
+  private async _post(path: string, body: unknown, timeoutMs = 30000): Promise<unknown> {
     const apiKey = await this.resolveKey();
 
     return new Promise((resolve, reject) => {
@@ -107,9 +108,9 @@ export class OpenAIClient {
         reject(new Error(`Network error reaching OpenAI: ${err.message}`));
       });
 
-      req.setTimeout(30000, () => {
+      req.setTimeout(timeoutMs, () => {
         req.destroy();
-        reject(new Error('OpenAI request timed out after 30s'));
+        reject(new Error(`OpenAI request timed out after ${timeoutMs / 1000}s`));
       });
 
       req.write(payload);

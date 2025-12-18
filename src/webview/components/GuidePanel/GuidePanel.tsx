@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ImplementationGuide, ImplementationStep, FileReference } from '../../types';
+import { ErrorBanner } from '../shared/ErrorBanner';
 
 interface Props {
   guide: ImplementationGuide | null;
@@ -8,6 +9,11 @@ interface Props {
   disabled: boolean;
   onGenerate: () => void;
   onOpenFile: (filePath: string, startLine: number, endLine: number) => void;
+  implementLoading: boolean;
+  implementLog: string[];
+  implementResult: { filesModified: string[] } | null;
+  implementError: string | null;
+  onImplement: () => void;
 }
 
 export function GuidePanel({
@@ -17,6 +23,11 @@ export function GuidePanel({
   disabled,
   onGenerate,
   onOpenFile,
+  implementLoading,
+  implementLog,
+  implementResult,
+  implementError,
+  onImplement,
 }: Props) {
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
 
@@ -52,12 +63,7 @@ export function GuidePanel({
         <p className="hint">Calling AI — this may take a few seconds...</p>
       )}
 
-      {error && (
-        <div className="error-banner">
-          <span className="error-icon">⚠</span>
-          <span>{error}</span>
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
       {guide && (
         <div className="guide-wrap">
@@ -81,9 +87,68 @@ export function GuidePanel({
               />
             ))}
           </div>
+
+          <button
+            className="btn btn-secondary"
+            onClick={onImplement}
+            disabled={implementLoading}
+          >
+            {implementLoading ? (
+              <span className="btn-loading">
+                <span className="spinner-dot" />
+                <span className="spinner-dot" />
+                <span className="spinner-dot" />
+              </span>
+            ) : (
+              'Implement'
+            )}
+          </button>
+
+          {implementError && <ErrorBanner message={implementError} />}
+
+          {implementLog.length > 0 && (
+            <ImplementLog
+              lines={implementLog}
+              loading={implementLoading}
+              result={implementResult}
+            />
+          )}
         </div>
       )}
     </section>
+  );
+}
+
+interface ImplementLogProps {
+  lines: string[];
+  loading: boolean;
+  result: { filesModified: string[] } | null;
+}
+
+function ImplementLog({ lines, loading, result }: ImplementLogProps) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [lines]);
+
+  return (
+    <div className="implement-log">
+      {result && (
+        <p className="implement-log-done">
+          ✓ Done — {result.filesModified.length} file{result.filesModified.length !== 1 ? 's' : ''} modified
+        </p>
+      )}
+      {lines.map((line, i) => (
+        <span key={i} className={`implement-log-line${line.startsWith('▸') ? ' implement-log-step' : ''}`}>
+          {line}
+        </span>
+      ))}
+      {loading && (
+        <span className="implement-log-line implement-log-cursor" aria-hidden>▌</span>
+      )}
+      <div ref={bottomRef} />
+    </div>
   );
 }
 

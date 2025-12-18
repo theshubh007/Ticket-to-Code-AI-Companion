@@ -32,13 +32,15 @@ export function activate(context: vscode.ExtensionContext) {
     security,
     ticketManager,
     codeAnalyzer,
-    aiEngine
+    aiEngine,
+    context.workspaceState
   );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       'ticket-to-code.sidebar',
-      provider
+      provider,
+      { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
 
