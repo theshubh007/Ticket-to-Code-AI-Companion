@@ -34,6 +34,14 @@ export function TicketPanel({
 }: Props) {
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [expanded, setExpanded] = useState(false);
+  const trimmedSearch = ticketSearch.trim();
+  const visibleTicketCount = ticketList?.length ?? 0;
+  const hasActiveFilter = trimmedSearch.length > 0;
+
+  let ticketCountLabel = `${totalTicketCount} ${totalTicketCount === 1 ? 'ticket' : 'tickets'}`;
+  if (hasActiveFilter && totalTicketCount !== visibleTicketCount) {
+    ticketCountLabel = `${visibleTicketCount} of ${totalTicketCount} tickets`;
+  }
 
   useEffect(() => {
     if (ticket && !loading) {
@@ -52,6 +60,9 @@ export function TicketPanel({
       <div className="panel-header">
         <span className="panel-number">①</span>
         <h2 className="panel-title">Jira Ticket</h2>
+        {view === 'list' && !ticketListLoading && !ticketListError && ticketList !== null && (
+          <span className="panel-count-badge">{ticketCountLabel}</span>
+        )}
         {view === 'list' && (
           <button
             className="icon-btn"

@@ -55,6 +55,15 @@ body {
   flex: 1;
 }
 
+.panel-count-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  white-space: nowrap;
+}
+
 .icon-btn {
   border: 1px solid var(--vscode-widget-border, #444);
   background: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.04));
