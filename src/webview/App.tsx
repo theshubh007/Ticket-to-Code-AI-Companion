@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { postMessage, getState as vsGetState, setState as vsSetState } from './vscodeApi';
-import { TicketData, TicketSummary, CodeChunk, ImplementationGuide } from './types';
+import { TicketData, TicketSummary, CodeChunk, ImplementationGuide, FileDiff } from './types';
 import { TicketPanel } from './components/TicketPanel/TicketPanel';
 import { AnalysisPanel } from './components/AnalysisPanel/AnalysisPanel';
 import { GuidePanel } from './components/GuidePanel/GuidePanel';
+import { DiffViewer } from './components/DiffViewer/DiffViewer';
 
 export type AppState = {
   ticketList: TicketSummary[] | null;
@@ -27,6 +28,8 @@ export type AppState = {
   implementLog: string[];
   implementResult: { filesModified: string[] } | null;
   implementError: string | null;
+
+  pendingDiffs: FileDiff[] | null;
 };
 
 const initialState: AppState = {
@@ -48,6 +51,8 @@ const initialState: AppState = {
   implementLog: [],
   implementResult: null,
   implementError: null,
+
+  pendingDiffs: null,
 };
 
 export function App() {
@@ -68,13 +73,11 @@ export function App() {
       guideError: null,
       implementLoading: false,
       implementError: null,
-      // Clear session-only data — chunks hold embedding vectors that are no
-      // longer in the extension host after a reload, and implement history is
-      // stale. ticket + ticketList + guide are restored because the host also
-      // rehydrates _lastTicket and _lastGuide from workspaceState.
+      // Clear session-only data
       chunks: null,
       implementLog: [],
       implementResult: null,
+      pendingDiffs: null,
     };
   });
 
@@ -190,6 +193,13 @@ export function App() {
           });
           break;
 
+        case 'diffResult':
+          updateState({
+            pendingDiffs: (payload as { diffs: FileDiff[] }).diffs,
+            implementLoading: false,
+          });
+          break;
+
         case 'implementError':
           updateState({
             implementError: payload as string,
@@ -246,6 +256,48 @@ export function App() {
 
   function handleOpenFile(filePath: string, startLine: number, endLine: number) {
     postMessage('openFile', { filePath, startLine, endLine });
+  }
+
+  function handleAcceptDiff(filePath: string) {
+    const diff = state.pendingDiffs?.find((d) => d.filePath === filePath);
+    if (diff) {
+      updateState({ implementLoading: true });
+      postMessage('applyDiffs', { diffs: [diff] });
+      // Remove this diff from pending
+      updateState({
+        pendingDiffs: state.pendingDiffs?.filter((d) => d.filePath !== filePath) || null,
+      });
+    }
+  }
+
+  function handleRejectDiff(filePath: string) {
+    updateState({
+      pendingDiffs: state.pendingDiffs?.filter((d) => d.filePath !== filePath) || null,
+    });
+  }
+
+  function handleAcceptAll() {
+    if (state.pendingDiffs) {
+      updateState({ implementLoading: true });
+      postMessage('applyDiffs', { diffs: state.pendingDiffs });
+      updateState({ pendingDiffs: null });
+    }
+  }
+
+  function handleCancelDiff() {
+    updateState({ pendingDiffs: null });
+  }
+
+  if (state.pendingDiffs) {
+    return (
+      <DiffViewer
+        diffs={state.pendingDiffs}
+        onAccept={handleAcceptDiff}
+        onReject={handleRejectDiff}
+        onAcceptAll={handleAcceptAll}
+        onCancel={handleCancelDiff}
+      />
+    );
   }
 
   return (

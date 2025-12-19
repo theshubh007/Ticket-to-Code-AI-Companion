@@ -7,8 +7,8 @@ import { OpenAIClient } from '../clients/OpenAIClient';
 import { CacheManager } from './CacheManager';
 import { PerformanceMonitor } from '../utils/performanceMonitor';
 
-const EMBEDDING_BATCH_SIZE = 50;
-const MAX_CONCURRENT_BATCHES = 3;
+const EMBEDDING_BATCH_SIZE = 10;
+const MAX_CONCURRENT_BATCHES = 1;
 
 export class CodeAnalyzer {
   private chunks: CodeChunk[] = [];

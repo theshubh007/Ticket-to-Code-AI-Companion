@@ -37,7 +37,7 @@ export class JiraClient {
   }
 
   async getMyIssues(): Promise<RawJiraIssue[]> {
-    const jql = encodeURIComponent('assignee=currentUser() ORDER BY updated DESC');
+    const jql = encodeURIComponent('(assignee=currentUser() OR reporter=currentUser()) ORDER BY updated DESC');
     const fields = 'summary,status,priority,labels,issuetype';
     const url = `${this.config.baseUrl}/rest/api/3/search/jql?jql=${jql}&fields=${fields}&maxResults=50`;
     const token = Buffer.from(

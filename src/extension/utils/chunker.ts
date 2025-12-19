@@ -2,6 +2,7 @@ import { CodeChunk } from '../types';
 
 const DEFAULT_CHUNK_SIZE = 80;    // lines per chunk
 const DEFAULT_OVERLAP = 15;       // lines of overlap between chunks
+const MAX_CHARS_PER_CHUNK = 20000; // Roughly 5k-8k tokens depending on language
 
 export interface ChunkerOptions {
   chunkSize?: number;
@@ -24,12 +25,16 @@ export function chunkFile(
 
   // File is small enough to be a single chunk
   if (lines.length <= chunkSize) {
+    let chunkContent = content.trim();
+    if (chunkContent.length > MAX_CHARS_PER_CHUNK) {
+      chunkContent = chunkContent.slice(0, MAX_CHARS_PER_CHUNK) + '\n... [truncated due to size]';
+    }
     return [
       {
         filePath,
         startLine: 0,
         endLine: lines.length - 1,
-        content: content.trim(),
+        content: chunkContent,
       },
     ];
   }
@@ -40,7 +45,12 @@ export function chunkFile(
   while (start < lines.length) {
     const end = Math.min(start + chunkSize - 1, lines.length - 1);
     const chunkLines = lines.slice(start, end + 1);
-    const chunkContent = chunkLines.join('\n').trim();
+    let chunkContent = chunkLines.join('\n').trim();
+
+    // Enforce character limit
+    if (chunkContent.length > MAX_CHARS_PER_CHUNK) {
+      chunkContent = chunkContent.slice(0, MAX_CHARS_PER_CHUNK) + '\n... [truncated due to size]';
+    }
 
     // Skip chunks that are effectively empty
     if (chunkContent.length > 0) {
