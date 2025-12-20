@@ -44,3 +44,10 @@ export interface ImplementationGuide {
   generatedAt: string;
   steps: ImplementationStep[];
 }
+
+export type AIProvider = 'openai' | 'openrouter';
+
+export interface AISettings {
+  chatModel: string;
+  hasApiKey: boolean;
+}

@@ -98,7 +98,8 @@ Generate a step-by-step implementation guide as JSON.`;
     let parsed: RawGuideResponse;
 
     try {
-      // Strip markdown fences if model ignored instructions
+      // Strip markdown fences and recover the first balanced JSON object if the
+      // model wrapped the answer in prose or extra commentary.
       const cleaned = raw
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
@@ -107,9 +108,14 @@ Generate a step-by-step implementation guide as JSON.`;
 
       parsed = JSON.parse(cleaned);
     } catch {
-      throw new Error(
-        'Failed to parse LLM response as JSON. The model returned an unexpected format.'
-      );
+      try {
+        const extracted = this._extractJsonObject(raw);
+        parsed = JSON.parse(extracted);
+      } catch {
+        throw new Error(
+          'Failed to parse LLM response as JSON. The model returned an unexpected format.'
+        );
+      }
     }
 
     if (!parsed.steps || !Array.isArray(parsed.steps)) {
@@ -183,5 +189,50 @@ Generate a step-by-step implementation guide as JSON.`;
         ].join('\n');
       })
       .join('\n\n');
+  }
+
+  private _extractJsonObject(raw: string): string {
+    const start = raw.indexOf('{');
+    if (start === -1) {
+      throw new Error('No JSON object found in model response.');
+    }
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < raw.length; index += 1) {
+      const char = raw[index];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) {
+        continue;
+      }
+
+      if (char === '{') {
+        depth += 1;
+      } else if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          return raw.slice(start, index + 1);
+        }
+      }
+    }
+
+    throw new Error('Unbalanced JSON object in model response.');
   }
 }

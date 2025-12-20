@@ -58,11 +58,24 @@ export interface ImplementationGuide {
   steps: ImplementationStep[];
 }
 
+export interface AISettingsPayload {
+  chatModel: string;
+  hasApiKey: boolean;
+}
+
 // ─── WebView Message Protocol ─────────────────────────────────────────────────
 // Discriminated unions — every message has a command field as the discriminator
 
 export type MessageFromWebview =
   | { command: 'ping' }
+  | { command: 'getAISettings' }
+  | {
+      command: 'saveAISettings';
+      payload: {
+        chatModel: string;
+        apiKey?: string;
+      };
+    }
   | { command: 'listTickets' }
   | { command: 'fetchTicket'; payload: { key: string } }
   | { command: 'analyzeRepo'; payload: { ticketDescription: string } }
@@ -71,6 +84,9 @@ export type MessageFromWebview =
 
 export type MessageToWebview =
   | { command: 'pong'; payload: string }
+  | { command: 'aiSettings'; payload: AISettingsPayload }
+  | { command: 'aiSettingsSaved'; payload: string }
+  | { command: 'aiSettingsError'; payload: string }
   | { command: 'ticketList'; payload: TicketSummary[] }
   | { command: 'ticketListError'; payload: string }
   | { command: 'ticketResult'; payload: TicketData }

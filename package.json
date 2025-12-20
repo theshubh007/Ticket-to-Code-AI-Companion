@@ -9,7 +9,12 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:ticket-to-code.sidebar",
+    "onCommand:ticket-to-code.resetCredentials",
+    "onCommand:ticket-to-code.clearIndex"
+  ],
   "main": "./dist/extension/extension.js",
   "contributes": {
     "viewsContainers": {

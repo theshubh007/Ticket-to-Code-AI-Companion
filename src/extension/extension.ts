@@ -13,14 +13,23 @@ export function activate(context: vscode.ExtensionContext) {
   const security = new Security(context.secrets);
   const cache = new CacheManager(context.globalStoragePath);
 
-  // OpenAI client with runtime key resolution from SecretStorage
+  // OpenRouter client with runtime key resolution from SecretStorage
   const openAIClient = new OpenAIClient({ apiKey: '' });
-  openAIClient.setKeyResolver(async () => {
-    const key = await security.getOpenAIKey();
+  openAIClient.setRuntimeResolver(async () => {
+    const settings = await security.getAISettings();
+    const key = await security.getProviderApiKey('openrouter');
     if (!key) {
-      throw new Error('OpenAI API key not configured. Please re-enter credentials.');
+      throw new Error(
+        'OpenRouter API key not configured. Open settings and add your key.'
+      );
     }
-    return key;
+
+    return {
+      provider: 'openrouter',
+      apiKey: key,
+      chatModel: settings.chatModel,
+      embeddingModel: settings.embeddingModel,
+    };
   });
 
   const ticketManager = new TicketManager(security, cache);
@@ -49,7 +58,8 @@ export function activate(context: vscode.ExtensionContext) {
         await security.delete('jiraBaseUrl');
         await security.delete('jiraEmail');
         await security.delete('jiraApiToken');
-        await security.delete('openAiApiKey');
+        await security.delete('openRouterApiKey');
+        await security.delete('aiChatModel');
         vscode.window.showInformationMessage(
           'Ticket to Code: all credentials cleared.'
         );

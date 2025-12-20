@@ -41,6 +41,12 @@ body {
   gap: 6px;
 }
 
+.panel-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .panel-number {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
@@ -96,6 +102,11 @@ body {
   animation: spin 0.8s linear infinite;
 }
 
+.icon-gear {
+  width: 13px;
+  height: 13px;
+}
+
 .panel-badge {
   font-size: 10px;
   padding: 1px 6px;
@@ -137,6 +148,38 @@ body {
 
 .ticket-search-input {
   margin-bottom: 2px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+
+.settings-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.settings-select {
+  appearance: none;
+}
+
+.ticket-settings-card {
+  border: 1px solid var(--vscode-widget-border, #444);
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.04));
+  border-radius: 4px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* ─── Buttons ────────────────────────────────────────────────────── */

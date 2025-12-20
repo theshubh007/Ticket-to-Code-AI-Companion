@@ -4,10 +4,30 @@ const KEYS = {
   jiraBaseUrl: 'jira-base-url',
   jiraEmail: 'jira-email',
   jiraApiToken: 'jira-api-token',
-  openAiApiKey: 'openai-api-key',
+  openRouterApiKey: 'openrouter-api-key',
+  aiChatModel: 'ai-chat-model',
 } as const;
 
 type SecretKey = keyof typeof KEYS;
+export type AIProvider = 'openrouter';
+
+export interface AISettings {
+  provider: AIProvider;
+  chatModel: string;
+  embeddingModel: string;
+}
+
+const DEFAULT_MODELS: Record<AIProvider, { chat: string; embedding: string }> = {
+  openrouter: {
+    chat: '~anthropic/claude-haiku-latest',
+    embedding: 'openai/text-embedding-3-small',
+  },
+};
+
+const OPENROUTER_CHAT_MODELS = new Set([
+  '~anthropic/claude-haiku-latest',
+  '~google/gemini-flash-latest',
+]);
 
 export class Security {
   constructor(private readonly secrets: vscode.SecretStorage) {}
@@ -41,7 +61,58 @@ export class Security {
   }
 
   async getOpenAIKey(): Promise<string | null> {
-    return (await this.get('openAiApiKey')) ?? null;
+    return (await this.get('openRouterApiKey')) ?? null;
+  }
+
+  async getProviderApiKey(provider: AIProvider): Promise<string | null> {
+    return (await this.get('openRouterApiKey')) ?? null;
+  }
+
+  async setProviderApiKey(provider: AIProvider, key: string): Promise<void> {
+    const trimmed = key.trim();
+    if (!trimmed) {
+      throw new Error('API key cannot be empty.');
+    }
+
+    await this.set('openRouterApiKey', trimmed);
+  }
+
+  async hasProviderApiKey(provider: AIProvider): Promise<boolean> {
+    const key = await this.getProviderApiKey(provider);
+    return Boolean(key && key.trim().length > 0);
+  }
+
+  async getAISettings(): Promise<AISettings> {
+    const provider: AIProvider = 'openrouter';
+    const storedChatModel = (await this.get('aiChatModel'))?.trim() ?? '';
+    const chatModel = OPENROUTER_CHAT_MODELS.has(storedChatModel)
+      ? storedChatModel
+      : DEFAULT_MODELS.openrouter.chat;
+
+    return {
+      provider,
+      chatModel,
+      embeddingModel: DEFAULT_MODELS.openrouter.embedding,
+    };
+  }
+
+  async setAISettings(settings: Pick<AISettings, 'chatModel'>): Promise<void> {
+    const chatModel = settings.chatModel.trim();
+    if (!chatModel) {
+      throw new Error('Chat model is required.');
+    }
+
+    if (!OPENROUTER_CHAT_MODELS.has(chatModel)) {
+      throw new Error(
+        `Unsupported OpenRouter model: ${chatModel}. Use one of the models in AI Settings.`
+      );
+    }
+
+    await this.set('aiChatModel', chatModel);
+  }
+
+  getDefaultModels(provider: AIProvider): { chat: string; embedding: string } {
+    return DEFAULT_MODELS[provider];
   }
 
   // Prompts user to enter credentials via VS Code input boxes
@@ -79,21 +150,27 @@ export class Security {
 
   async promptOpenAIKey(): Promise<boolean> {
     const key = await vscode.window.showInputBox({
-      title: 'OpenAI API Key',
-      prompt: 'Enter your OpenAI API key (from platform.openai.com/api-keys)',
+      title: 'OpenRouter API Key',
+      prompt: 'Enter your OpenRouter API key (from openrouter.ai/keys)',
       password: true,
       ignoreFocusOut: true,
     });
     if (!key) return false;
 
-    await this.set('openAiApiKey', key);
+    await this.set('openRouterApiKey', key);
     return true;
+  }
+
+  async hasJiraCredentials(): Promise<boolean> {
+    const jira = await this.getJiraConfig();
+    return jira !== null;
   }
 
   // Returns true if all credentials are present
   async hasAllCredentials(): Promise<boolean> {
-    const jira = await this.getJiraConfig();
-    const openai = await this.getOpenAIKey();
-    return jira !== null && openai !== null;
+    const jira = await this.hasJiraCredentials();
+    const { provider } = await this.getAISettings();
+    const aiKey = await this.hasProviderApiKey(provider);
+    return jira && aiKey;
   }
 }

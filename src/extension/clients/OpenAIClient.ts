@@ -4,6 +4,15 @@ export interface OpenAIConfig {
   apiKey: string;
 }
 
+export type AIProvider = 'openai' | 'openrouter';
+
+export interface RuntimeAIConfig {
+  provider: AIProvider;
+  apiKey: string;
+  chatModel: string;
+  embeddingModel: string;
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -11,12 +20,17 @@ export interface ChatMessage {
 
 export class OpenAIClient {
   private keyResolver?: () => Promise<string>;
+  private runtimeResolver?: () => Promise<RuntimeAIConfig>;
 
   constructor(private config: OpenAIConfig) {}
 
   // Allow late binding of key resolver so Security module can inject it
   setKeyResolver(resolver: () => Promise<string>) {
     this.keyResolver = resolver;
+  }
+
+  setRuntimeResolver(resolver: () => Promise<RuntimeAIConfig>) {
+    this.runtimeResolver = resolver;
   }
 
   private async resolveKey(): Promise<string> {
@@ -26,15 +40,29 @@ export class OpenAIClient {
     return this.config.apiKey;
   }
 
+  private async resolveRuntime(): Promise<RuntimeAIConfig> {
+    if (this.runtimeResolver) {
+      return this.runtimeResolver();
+    }
+
+    return {
+      provider: 'openai',
+      apiKey: await this.resolveKey(),
+      chatModel: '~anthropic/claude-sonnet-latest',
+      embeddingModel: 'text-embedding-3-small',
+    };
+  }
+
   async embed(texts: string[]): Promise<number[][]> {
+    const runtime = await this.resolveRuntime();
     const batches = this._chunk(texts, 2048);
     const results: number[][] = [];
 
     for (const batch of batches) {
       const response = await this._post('/v1/embeddings', {
-        model: 'text-embedding-3-small',
+        model: runtime.embeddingModel,
         input: batch,
-      });
+      }, runtime);
       const embeddings = (response as {
         data: { embedding: number[] }[];
       }).data.map((d) => d.embedding);
@@ -48,17 +76,20 @@ export class OpenAIClient {
     messages: ChatMessage[],
     responseFormat: 'text' | 'json' = 'text'
   ): Promise<string> {
+    const runtime = await this.resolveRuntime();
+    const maxTokens = responseFormat === 'json' ? 1536 : 512;
     const body: Record<string, unknown> = {
-      model: 'gpt-4o-mini',
+      model: runtime.chatModel,
       messages,
       temperature: 0.2,
+      max_tokens: maxTokens,
     };
 
     if (responseFormat === 'json') {
       body.response_format = { type: 'json_object' };
     }
 
-    const response = await this._post('/v1/chat/completions', body);
+    const response = await this._post('/v1/chat/completions', body, runtime);
     const result = response as {
       choices: { message: { content: string } }[];
     };
@@ -66,21 +97,33 @@ export class OpenAIClient {
     return result.choices[0].message.content;
   }
 
-  private async _post(path: string, body: unknown): Promise<unknown> {
-    const apiKey = await this.resolveKey();
+  private async _post(
+    path: string,
+    body: unknown,
+    runtime: RuntimeAIConfig
+  ): Promise<unknown> {
+    const host = runtime.provider === 'openrouter' ? 'openrouter.ai' : 'api.openai.com';
+    const apiPath = runtime.provider === 'openrouter' ? `/api${path}` : path;
+    const providerName = runtime.provider === 'openrouter' ? 'OpenRouter' : 'OpenAI';
 
     return new Promise((resolve, reject) => {
       const payload = JSON.stringify(body);
 
+      const headers: Record<string, string | number> = {
+        Authorization: `Bearer ${runtime.apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+      };
+
+      if (runtime.provider === 'openrouter') {
+        headers['X-Title'] = 'Ticket to Code Orchestrator';
+      }
+
       const options = {
-        hostname: 'api.openai.com',
-        path,
+        hostname: host,
+        path: apiPath,
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
+        headers,
       };
 
       const req = https.request(options, (res) => {
@@ -91,25 +134,25 @@ export class OpenAIClient {
             try {
               resolve(JSON.parse(data));
             } catch {
-              reject(new Error('Failed to parse OpenAI response as JSON'));
+              reject(new Error(`Failed to parse ${providerName} response as JSON`));
             }
           } else if (res.statusCode === 401) {
-            reject(new Error('OpenAI authentication failed. Check your API key.'));
+            reject(new Error(`${providerName} authentication failed. Check your API key.`));
           } else if (res.statusCode === 429) {
-            reject(new Error('OpenAI rate limit hit. Please wait and try again.'));
+            reject(new Error(`${providerName} rate limit hit. Please wait and try again.`));
           } else {
-            reject(new Error(`OpenAI API error: HTTP ${res.statusCode} — ${data}`));
+            reject(new Error(`${providerName} API error: HTTP ${res.statusCode} — ${data}`));
           }
         });
       });
 
       req.on('error', (err) => {
-        reject(new Error(`Network error reaching OpenAI: ${err.message}`));
+        reject(new Error(`Network error reaching ${providerName}: ${err.message}`));
       });
 
       req.setTimeout(30000, () => {
         req.destroy();
-        reject(new Error('OpenAI request timed out after 30s'));
+        reject(new Error(`${providerName} request timed out after 30s`));
       });
 
       req.write(payload);

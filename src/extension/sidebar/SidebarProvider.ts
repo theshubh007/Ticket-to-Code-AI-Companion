@@ -54,6 +54,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           case 'ping':
             this._post({ command: 'pong', payload: 'Connection established ✓' });
             break;
+          case 'getAISettings':
+            await this._handleGetAISettings();
+            break;
+          case 'saveAISettings':
+            await this._handleSaveAISettings(message.payload);
+            break;
           case 'listTickets':
             await this._handleListTickets();
             break;
@@ -80,16 +86,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async _handleListTickets(): Promise<void> {
-    const hasCredentials = await this._security.hasAllCredentials();
-    if (!hasCredentials) {
+    const hasJiraCredentials = await this._security.hasJiraCredentials();
+    if (!hasJiraCredentials) {
       const jiraOk = await this._security.promptJiraConfig();
       if (!jiraOk) {
         this._post({ command: 'ticketListError', payload: 'Jira credentials are required.' });
-        return;
-      }
-      const openAiOk = await this._security.promptOpenAIKey();
-      if (!openAiOk) {
-        this._post({ command: 'ticketListError', payload: 'OpenAI API key is required.' });
         return;
       }
     }
@@ -108,16 +109,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const hasCredentials = await this._security.hasAllCredentials();
-    if (!hasCredentials) {
+    const hasJiraCredentials = await this._security.hasJiraCredentials();
+    if (!hasJiraCredentials) {
       const jiraOk = await this._security.promptJiraConfig();
       if (!jiraOk) {
         this._post({ command: 'ticketError', payload: 'Jira credentials are required.' });
-        return;
-      }
-      const openAiOk = await this._security.promptOpenAIKey();
-      if (!openAiOk) {
-        this._post({ command: 'ticketError', payload: 'OpenAI API key is required.' });
         return;
       }
     }
@@ -135,6 +131,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const root = getWorkspaceRoot();
     if (!root) {
       this._post({ command: 'analysisError', payload: 'No workspace folder open.' });
+      return;
+    }
+
+    const aiConfigError = await this._getAIConfigError();
+    if (aiConfigError) {
+      this._post({ command: 'analysisError', payload: aiConfigError });
       return;
     }
 
@@ -176,6 +178,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    const aiConfigError = await this._getAIConfigError();
+    if (aiConfigError) {
+      this._post({ command: 'guideError', payload: aiConfigError });
+      return;
+    }
+
     try {
       const guide = await this._aiEngine.generateGuide(
         this._lastTicket,
@@ -185,6 +193,67 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     } catch (err) {
       this._post({ command: 'guideError', payload: (err as Error).message });
     }
+  }
+
+  private async _handleGetAISettings(): Promise<void> {
+    try {
+      const settings = await this._security.getAISettings();
+      const hasApiKey = await this._security.hasProviderApiKey(settings.provider);
+
+      this._post({
+        command: 'aiSettings',
+        payload: {
+          chatModel: settings.chatModel,
+          hasApiKey,
+        },
+      });
+    } catch (err) {
+      this._post({
+        command: 'aiSettingsError',
+        payload: `Failed to load AI settings: ${(err as Error).message}`,
+      });
+    }
+  }
+
+  private async _handleSaveAISettings(payload: {
+    chatModel: string;
+    apiKey?: string;
+  }): Promise<void> {
+    try {
+      const chatModel = payload.chatModel.trim();
+      if (!chatModel) {
+        throw new Error('Chat model is required.');
+      }
+
+      await this._security.setAISettings({ chatModel });
+
+      const key = payload.apiKey?.trim() ?? '';
+      if (key) {
+        await this._security.setProviderApiKey('openrouter', key);
+      }
+
+      this._post({ command: 'aiSettingsSaved', payload: 'AI settings saved.' });
+      await this._handleGetAISettings();
+    } catch (err) {
+      this._post({
+        command: 'aiSettingsError',
+        payload: (err as Error).message,
+      });
+    }
+  }
+
+  private async _getAIConfigError(): Promise<string | null> {
+    const settings = await this._security.getAISettings();
+    const hasApiKey = await this._security.hasProviderApiKey('openrouter');
+    if (!hasApiKey) {
+      return 'Missing OpenRouter API key. Open AI Settings and save your key.';
+    }
+
+    if (!settings.chatModel.trim()) {
+      return 'AI model settings are incomplete. Open AI Settings and provide a chat model.';
+    }
+
+    return null;
   }
 
   private _post(message: MessageToWebview) {

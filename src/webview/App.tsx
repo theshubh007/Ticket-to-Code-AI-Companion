@@ -1,11 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { postMessage } from './vscodeApi';
-import { TicketData, TicketSummary, CodeChunk, ImplementationGuide } from './types';
+import {
+  TicketData,
+  TicketSummary,
+  CodeChunk,
+  ImplementationGuide,
+  AISettings,
+} from './types';
 import { TicketPanel } from './components/TicketPanel/TicketPanel';
 import { AnalysisPanel } from './components/AnalysisPanel/AnalysisPanel';
 import { GuidePanel } from './components/GuidePanel/GuidePanel';
 
+const OPENROUTER_CHAT_MODELS = new Set([
+  '~anthropic/claude-haiku-latest',
+  '~google/gemini-flash-latest',
+]);
+
+function normalizeOpenRouterChatModel(model: string): string {
+  const trimmed = model.trim();
+  return OPENROUTER_CHAT_MODELS.has(trimmed)
+    ? trimmed
+    : '~anthropic/claude-haiku-latest';
+}
+
 export type AppState = {
+  aiChatModel: string;
+  aiHasApiKey: boolean;
+  aiSettingsLoading: boolean;
+  aiSettingsError: string | null;
+  aiSettingsStatus: string | null;
+
   ticketList: TicketSummary[] | null;
   ticketListLoading: boolean;
   ticketListError: string | null;
@@ -25,6 +49,12 @@ export type AppState = {
 };
 
 const initialState: AppState = {
+  aiChatModel: '~anthropic/claude-haiku-latest',
+  aiHasApiKey: false,
+  aiSettingsLoading: true,
+  aiSettingsError: null,
+  aiSettingsStatus: null,
+
   ticketList: null,
   ticketListLoading: true,
   ticketListError: null,
@@ -43,6 +73,7 @@ const initialState: AppState = {
 export function App() {
   const [state, setState] = useState<AppState>(initialState);
   const [ticketSearch, setTicketSearch] = useState('');
+  const [apiKeyInput, setApiKeyInput] = useState('');
 
   const updateState = useCallback((partial: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...partial }));
@@ -50,6 +81,7 @@ export function App() {
 
   // Fetch assigned tickets automatically when the panel first opens
   useEffect(() => {
+    postMessage('getAISettings');
     postMessage('listTickets');
   }, []);
 
@@ -61,6 +93,34 @@ export function App() {
       const { command, payload } = event.data;
 
       switch (command) {
+        case 'aiSettings': {
+          const settings = payload as AISettings;
+          updateState({
+            aiChatModel: normalizeOpenRouterChatModel(settings.chatModel),
+            aiHasApiKey: settings.hasApiKey,
+            aiSettingsLoading: false,
+            aiSettingsError: null,
+          });
+          break;
+        }
+
+        case 'aiSettingsSaved':
+          updateState({
+            aiSettingsStatus: payload as string,
+            aiSettingsError: null,
+            aiSettingsLoading: false,
+          });
+          setApiKeyInput('');
+          break;
+
+        case 'aiSettingsError':
+          updateState({
+            aiSettingsError: payload as string,
+            aiSettingsStatus: null,
+            aiSettingsLoading: false,
+          });
+          break;
+
         case 'ticketList':
           updateState({
             ticketList: payload as TicketSummary[],
@@ -140,6 +200,18 @@ export function App() {
     postMessage('listTickets');
   }
 
+  function handleChatModelChange(model: string) {
+    updateState({ aiChatModel: model, aiSettingsError: null, aiSettingsStatus: null });
+  }
+
+  function handleSaveAISettings() {
+    updateState({ aiSettingsLoading: true, aiSettingsError: null, aiSettingsStatus: null });
+    postMessage('saveAISettings', {
+      chatModel: normalizeOpenRouterChatModel(state.aiChatModel),
+      apiKey: apiKeyInput.trim() || undefined,
+    });
+  }
+
   function handleTicketSearchChange(value: string) {
     setTicketSearch(value);
   }
@@ -192,12 +264,21 @@ export function App() {
         ticketList={filteredTicketList}
         totalTicketCount={state.ticketList?.length ?? 0}
         ticketSearch={ticketSearch}
+        chatModel={state.aiChatModel}
+        apiKeyInput={apiKeyInput}
+        hasApiKey={state.aiHasApiKey}
+        settingsLoading={state.aiSettingsLoading}
+        settingsError={state.aiSettingsError}
+        settingsStatus={state.aiSettingsStatus}
         ticketListLoading={state.ticketListLoading}
         ticketListError={state.ticketListError}
         ticket={state.ticket}
         error={state.ticketError}
         loading={state.ticketLoading}
         onTicketSearchChange={handleTicketSearchChange}
+        onChatModelChange={handleChatModelChange}
+        onApiKeyInputChange={setApiKeyInput}
+        onSaveAISettings={handleSaveAISettings}
         onFetch={handleFetchTicket}
         onClearTicket={handleClearTicket}
         onRetryList={handleRetryList}

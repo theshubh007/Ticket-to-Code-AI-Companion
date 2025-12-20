@@ -114,6 +114,14 @@ describe('AIEngine', () => {
     expect(guide.steps).toHaveLength(2);
   });
 
+  it('generateGuide extracts JSON wrapped in prose', async () => {
+    mockOpenAI.chat = jest.fn().mockResolvedValue(
+      'Here is the guide you requested:\n' + validResponse + '\nThanks!'
+    );
+    const guide = await engine.generateGuide(mockTicket, mockChunks);
+    expect(guide.steps).toHaveLength(2);
+  });
+
   it('generateGuide throws on invalid JSON', async () => {
     mockOpenAI.chat = jest.fn().mockResolvedValue('not valid json at all');
     await expect(engine.generateGuide(mockTicket, mockChunks)).rejects.toThrow(
