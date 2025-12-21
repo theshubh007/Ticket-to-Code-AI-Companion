@@ -51,3 +51,9 @@ export interface AISettings {
   chatModel: string;
   hasApiKey: boolean;
 }
+
+export interface FileDiff {
+  filePath: string;
+  oldCode: string;
+  newCode: string;
+}

@@ -32,6 +32,7 @@ export interface CodeChunk {
 
 export interface EmbeddingIndex {
   version: number;
+  model?: string;
   createdAt: string;
   chunks: CodeChunk[];
 }
@@ -63,6 +64,12 @@ export interface AISettingsPayload {
   hasApiKey: boolean;
 }
 
+export interface FileDiff {
+  filePath: string;
+  oldCode: string;
+  newCode: string;
+}
+
 // ─── WebView Message Protocol ─────────────────────────────────────────────────
 // Discriminated unions — every message has a command field as the discriminator
 
@@ -80,6 +87,8 @@ export type MessageFromWebview =
   | { command: 'fetchTicket'; payload: { key: string } }
   | { command: 'analyzeRepo'; payload: { ticketDescription: string } }
   | { command: 'generateGuide' }
+  | { command: 'implement' }
+  | { command: 'applyDiffs'; payload: { diffs: FileDiff[] } }
   | { command: 'openFile'; payload: { filePath: string; startLine: number; endLine: number } };
 
 export type MessageToWebview =
@@ -95,4 +104,8 @@ export type MessageToWebview =
   | { command: 'analysisError'; payload: string }
   | { command: 'guideResult'; payload: ImplementationGuide }
   | { command: 'guideError'; payload: string }
-  | { command: 'indexingProgress'; payload: { current: number; total: number } };
+  | { command: 'indexingProgress'; payload: { current: number; total: number } }
+  | { command: 'implementProgress'; payload: { step: number; total: number; stepTitle: string; phase: 'reading' | 'generating' | 'writing'; filePath?: string } }
+  | { command: 'diffResult'; payload: { diffs: FileDiff[] } }
+  | { command: 'implementResult'; payload: { filesModified: string[] } }
+  | { command: 'implementError'; payload: string };
