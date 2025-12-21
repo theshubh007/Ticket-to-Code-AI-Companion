@@ -49,7 +49,7 @@ export class OpenAIClient {
       provider: 'openai',
       apiKey: await this.resolveKey(),
       chatModel: '~anthropic/claude-sonnet-latest',
-      embeddingModel: 'text-embedding-3-small',
+      embeddingModel: 'openai/text-embedding-3-large',
     };
   }
 
@@ -74,10 +74,11 @@ export class OpenAIClient {
 
   async chat(
     messages: ChatMessage[],
-    responseFormat: 'text' | 'json' = 'text'
+    responseFormat: 'text' | 'json' = 'text',
+    timeoutMs = 30000
   ): Promise<string> {
     const runtime = await this.resolveRuntime();
-    const maxTokens = responseFormat === 'json' ? 1536 : 512;
+    const maxTokens = responseFormat === 'json' ? 4096 : 1024;
     const body: Record<string, unknown> = {
       model: runtime.chatModel,
       messages,
@@ -89,7 +90,7 @@ export class OpenAIClient {
       body.response_format = { type: 'json_object' };
     }
 
-    const response = await this._post('/v1/chat/completions', body, runtime);
+    const response = await this._post('/v1/chat/completions', body, runtime, timeoutMs);
     const result = response as {
       choices: { message: { content: string } }[];
     };
@@ -100,7 +101,8 @@ export class OpenAIClient {
   private async _post(
     path: string,
     body: unknown,
-    runtime: RuntimeAIConfig
+    runtime: RuntimeAIConfig,
+    timeoutMs = 30000
   ): Promise<unknown> {
     const host = runtime.provider === 'openrouter' ? 'openrouter.ai' : 'api.openai.com';
     const apiPath = runtime.provider === 'openrouter' ? `/api${path}` : path;
@@ -150,9 +152,9 @@ export class OpenAIClient {
         reject(new Error(`Network error reaching ${providerName}: ${err.message}`));
       });
 
-      req.setTimeout(30000, () => {
+      req.setTimeout(timeoutMs, () => {
         req.destroy();
-        reject(new Error(`${providerName} request timed out after 30s`));
+        reject(new Error(`${providerName} request timed out after ${timeoutMs / 1000}s`));
       });
 
       req.write(payload);
