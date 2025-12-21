@@ -41,7 +41,8 @@ export function activate(context: vscode.ExtensionContext) {
     security,
     ticketManager,
     codeAnalyzer,
-    aiEngine
+    aiEngine,
+    context.workspaceState
   );
 
   context.subscriptions.push(

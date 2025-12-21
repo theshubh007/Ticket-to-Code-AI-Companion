@@ -11,6 +11,8 @@ import {
   MessageToWebview,
   CodeChunk,
   TicketData,
+  ImplementationGuide,
+  FileDiff,
 } from '../types';
 import { openFileAtRange, getWorkspaceRoot } from '../utils/editorNavigation';
 import {
@@ -23,13 +25,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _lastTicket?: TicketData;
   private _lastChunks?: CodeChunk[];
+  private _lastGuide?: ImplementationGuide;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _security: Security,
     private readonly _ticketManager: TicketManager,
     private readonly _codeAnalyzer: CodeAnalyzer,
-    private readonly _aiEngine: AIEngine
+    private readonly _aiEngine: AIEngine,
+    private readonly _workspaceState: vscode.Memento
   ) {}
 
   public resolveWebviewView(
@@ -41,6 +45,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.options = {
       enableScripts: true,
+      retainContextWhenHidden: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview'),
       ],
@@ -71,6 +76,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           case 'generateGuide':
             await this._handleGenerateGuide();
+            break;
+          case 'implement':
+            await this._handleImplement();
+            break;
+          case 'applyDiffs':
+            await this._handleApplyDiffs(message.payload.diffs);
             break;
           case 'openFile': {
             const { filePath, startLine, endLine } = message.payload;
@@ -121,6 +132,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     try {
       const ticket = await this._ticketManager.fetchTicket(key.trim().toUpperCase());
       this._lastTicket = ticket;
+      await this._workspaceState.update('lastTicket', ticket);
+      await this._workspaceState.update('lastChunks', undefined);
+      await this._workspaceState.update('lastGuide', undefined);
       this._post({ command: 'ticketResult', payload: ticket });
     } catch (err) {
       this._post({ command: 'ticketError', payload: (err as Error).message });
@@ -163,6 +177,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       );
 
       this._lastChunks = chunks;
+      await this._workspaceState.update('lastChunks', chunks);
+      await this._workspaceState.update('lastGuide', undefined);
       this._post({ command: 'analysisResult', payload: chunks });
     } catch (err) {
       this._post({ command: 'analysisError', payload: (err as Error).message });
@@ -189,6 +205,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._lastTicket,
         this._lastChunks
       );
+      this._lastGuide = guide;
+      await this._workspaceState.update('lastGuide', guide);
       this._post({ command: 'guideResult', payload: guide });
     } catch (err) {
       this._post({ command: 'guideError', payload: (err as Error).message });
@@ -207,6 +225,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           hasApiKey,
         },
       });
+
+      const savedTicket = this._workspaceState.get<TicketData>('lastTicket');
+      const savedChunks = this._workspaceState.get<CodeChunk[]>('lastChunks');
+      const savedGuide = this._workspaceState.get<ImplementationGuide>('lastGuide');
+
+      if (savedTicket) {
+        this._lastTicket = savedTicket;
+        this._post({ command: 'ticketResult', payload: savedTicket });
+      }
+      if (savedChunks) {
+        this._lastChunks = savedChunks;
+        this._post({ command: 'analysisResult', payload: savedChunks });
+      }
+      if (savedGuide) {
+        this._lastGuide = savedGuide;
+        this._post({ command: 'guideResult', payload: savedGuide });
+      }
     } catch (err) {
       this._post({
         command: 'aiSettingsError',
@@ -239,6 +274,100 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         command: 'aiSettingsError',
         payload: (err as Error).message,
       });
+    }
+  }
+
+  private async _handleImplement(): Promise<void> {
+    if (!this._lastTicket || !this._lastGuide) {
+      this._post({ command: 'implementError', payload: 'Generate a guide first before implementing.' });
+      return;
+    }
+
+    const root = getWorkspaceRoot();
+    if (!root) {
+      this._post({ command: 'implementError', payload: 'No workspace folder open.' });
+      return;
+    }
+
+    const ticket = this._lastTicket;
+    const guide = this._lastGuide;
+    const total = guide.steps.length;
+    const fileContents = new Map<string, string>();
+    const initialFileContents = new Map<string, string>();
+
+    try {
+      for (const step of guide.steps) {
+        const uniquePaths = Array.from(new Set(step.fileReferences.map((r) => r.filePath)));
+
+        this._post({ command: 'implementProgress', payload: { step: step.stepNumber, total, stepTitle: step.title, phase: 'reading' } });
+
+        for (const relPath of uniquePaths) {
+          if (!fileContents.has(relPath)) {
+            const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), relPath);
+            try {
+              const bytes = await vscode.workspace.fs.readFile(absUri);
+              const content = Buffer.from(bytes).toString('utf-8');
+              fileContents.set(relPath, content);
+              initialFileContents.set(relPath, content);
+            } catch {
+              fileContents.set(relPath, '');
+              initialFileContents.set(relPath, '');
+            }
+          }
+        }
+
+        this._post({ command: 'implementProgress', payload: { step: step.stepNumber, total, stepTitle: step.title, phase: 'generating' } });
+
+        const edits = await this._aiEngine.applyStep(ticket, step, fileContents);
+
+        for (const edit of edits) {
+          const current = fileContents.get(edit.filePath) ?? '';
+          let updated: string;
+
+          if (edit.startLine === 0) {
+            updated = current + (current.endsWith('\n') ? '' : '\n') + edit.replacement;
+          } else {
+            const lines = current.split('\n');
+            const start = edit.startLine - 1;
+            const end = edit.endLine;
+            if (start < 0 || start > lines.length || end < start) {
+              throw new Error(`Step ${step.stepNumber}: line range ${edit.startLine}–${edit.endLine} out of bounds for ${edit.filePath} (${lines.length} lines).`);
+            }
+            updated = [...lines.slice(0, start), edit.replacement, ...lines.slice(end)].join('\n');
+          }
+
+          fileContents.set(edit.filePath, updated);
+          this._post({ command: 'implementProgress', payload: { step: step.stepNumber, total, stepTitle: step.title, phase: 'writing', filePath: edit.filePath } });
+        }
+      }
+
+      const diffs: FileDiff[] = Array.from(fileContents.entries())
+        .filter(([p, content]) => content !== initialFileContents.get(p))
+        .map(([p, content]) => ({ filePath: p, oldCode: initialFileContents.get(p) ?? '', newCode: content }));
+
+      this._post({ command: 'diffResult', payload: { diffs } });
+    } catch (err) {
+      this._post({ command: 'implementError', payload: (err as Error).message });
+    }
+  }
+
+  private async _handleApplyDiffs(diffs: { filePath: string; newCode: string }[]): Promise<void> {
+    const root = getWorkspaceRoot();
+    if (!root) {
+      this._post({ command: 'implementError', payload: 'No workspace folder open.' });
+      return;
+    }
+
+    const filesModified: string[] = [];
+    try {
+      for (const diff of diffs) {
+        const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), diff.filePath);
+        await vscode.workspace.fs.writeFile(absUri, Buffer.from(diff.newCode, 'utf-8'));
+        filesModified.push(diff.filePath);
+      }
+      this._post({ command: 'implementResult', payload: { filesModified } });
+    } catch (err) {
+      this._post({ command: 'implementError', payload: (err as Error).message });
     }
   }
 
