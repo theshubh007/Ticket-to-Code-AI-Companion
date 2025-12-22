@@ -49,4 +49,13 @@ describe('chunkFile', () => {
     });
     expect(chunks[0].endLine).toBe(29);
   });
+
+  it('truncates chunks that exceed character limit', () => {
+    // Create a very long single line
+    const longLine = 'a'.repeat(25000);
+    const chunks = chunkFile(longLine, 'long.ts');
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].content.length).toBeLessThan(25000);
+    expect(chunks[0].content).toContain('[truncated due to size]');
+  });
 });

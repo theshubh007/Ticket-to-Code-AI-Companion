@@ -75,6 +75,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           case 'implement':
             await this._handleImplement();
             break;
+          case 'applyDiffs':
+            await this._handleApplyDiffs(message.payload.diffs);
+            break;
           case 'openFile': {
             const { filePath, startLine, endLine } = message.payload;
             const root = getWorkspaceRoot();
@@ -96,9 +99,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._post({ command: 'ticketListError', payload: 'Jira credentials are required.' });
         return;
       }
-      const openAiOk = await this._security.promptOpenAIKey();
-      if (!openAiOk) {
-        this._post({ command: 'ticketListError', payload: 'OpenAI API key is required.' });
+      const nebiusOk = await this._security.promptNebiusKey();
+      if (!nebiusOk) {
+        this._post({ command: 'ticketListError', payload: 'Nebius API key is required.' });
         return;
       }
     }
@@ -124,9 +127,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._post({ command: 'ticketError', payload: 'Jira credentials are required.' });
         return;
       }
-      const openAiOk = await this._security.promptOpenAIKey();
-      if (!openAiOk) {
-        this._post({ command: 'ticketError', payload: 'OpenAI API key is required.' });
+      const nebiusOk = await this._security.promptNebiusKey();
+      if (!nebiusOk) {
+        this._post({ command: 'ticketError', payload: 'Nebius API key is required.' });
         return;
       }
     }
@@ -218,54 +221,50 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const ticket = this._lastTicket;
     const guide = this._lastGuide;
     const total = guide.steps.length;
-    const filesModified: string[] = [];
+    const fileContents = new Map<string, string>();
+    const initialFileContents = new Map<string, string>();
 
     try {
       for (const step of guide.steps) {
-        // Collect unique file paths referenced in this step
         const uniquePaths = Array.from(new Set(step.fileReferences.map((r) => r.filePath)));
 
-        // Signal: reading phase
         this._post({
           command: 'implementProgress',
           payload: { step: step.stepNumber, total, stepTitle: step.title, phase: 'reading' },
         });
 
-        // Read current contents of each referenced file
-        const fileContents = new Map<string, string>();
         for (const relPath of uniquePaths) {
-          const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), relPath);
-          try {
-            const bytes = await vscode.workspace.fs.readFile(absUri);
-            fileContents.set(relPath, Buffer.from(bytes).toString('utf-8'));
-          } catch {
-            // File may not exist yet — pass empty string so AI can create it
-            fileContents.set(relPath, '');
+          if (!fileContents.has(relPath)) {
+            const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), relPath);
+            try {
+              const bytes = await vscode.workspace.fs.readFile(absUri);
+              const content = Buffer.from(bytes).toString('utf-8');
+              fileContents.set(relPath, content);
+              initialFileContents.set(relPath, content);
+            } catch {
+              fileContents.set(relPath, '');
+              initialFileContents.set(relPath, '');
+            }
           }
         }
 
-        // Signal: generating phase
         this._post({
           command: 'implementProgress',
           payload: { step: step.stepNumber, total, stepTitle: step.title, phase: 'generating' },
         });
 
-        // Ask AI to produce the edits for this step
         const edits = await this._aiEngine.applyStep(ticket, step, fileContents);
 
-        // Apply each edit via string replacement and write back to disk
         for (const edit of edits) {
-          const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), edit.filePath);
           const current = fileContents.get(edit.filePath) ?? '';
-
           let updated: string;
+
           if (edit.startLine === 0) {
-            // Append to end of file
             updated = current + (current.endsWith('\n') ? '' : '\n') + edit.replacement;
           } else {
             const lines = current.split('\n');
-            const start = edit.startLine - 1;         // convert to 0-based
-            const end = edit.endLine;                 // slice end is exclusive, so no -1
+            const start = edit.startLine - 1;
+            const end = edit.endLine;
             if (start < 0 || start > lines.length || end < start) {
               throw new Error(
                 `Step ${step.stepNumber}: line range ${edit.startLine}–${edit.endLine} is out of bounds ` +
@@ -279,13 +278,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             ].join('\n');
           }
 
-          await vscode.workspace.fs.writeFile(absUri, Buffer.from(updated, 'utf-8'));
-          // Keep fileContents up to date so later edits in the same step see the new state
           fileContents.set(edit.filePath, updated);
-
-          if (!filesModified.includes(edit.filePath)) {
-            filesModified.push(edit.filePath);
-          }
+          
           this._post({
             command: 'implementProgress',
             payload: { step: step.stepNumber, total, stepTitle: step.title, phase: 'writing', filePath: edit.filePath },
@@ -293,6 +287,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      const diffs = Array.from(fileContents.entries())
+        .filter(([path, content]) => content !== initialFileContents.get(path))
+        .map(([path, content]) => ({
+          filePath: path,
+          oldCode: initialFileContents.get(path) ?? '',
+          newCode: content,
+        }));
+
+      this._post({ command: 'diffResult', payload: { diffs } });
+    } catch (err) {
+      this._post({ command: 'implementError', payload: (err as Error).message });
+    }
+  }
+
+  private async _handleApplyDiffs(diffs: { filePath: string; newCode: string }[]): Promise<void> {
+    const root = getWorkspaceRoot();
+    if (!root) {
+      this._post({ command: 'implementError', payload: 'No workspace folder open.' });
+      return;
+    }
+
+    const filesModified: string[] = [];
+    try {
+      for (const diff of diffs) {
+        const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), diff.filePath);
+        await vscode.workspace.fs.writeFile(absUri, Buffer.from(diff.newCode, 'utf-8'));
+        filesModified.push(diff.filePath);
+      }
       this._post({ command: 'implementResult', payload: { filesModified } });
     } catch (err) {
       this._post({ command: 'implementError', payload: (err as Error).message });
