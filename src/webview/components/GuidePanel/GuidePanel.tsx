@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ImplementationGuide, ImplementationStep, FileReference } from '../../types';
 
 interface Props {
@@ -8,6 +8,11 @@ interface Props {
   disabled: boolean;
   onGenerate: () => void;
   onOpenFile: (filePath: string, startLine: number, endLine: number) => void;
+  implementLoading: boolean;
+  implementLog: string[];
+  implementResult: { filesModified: string[] } | null;
+  implementError: string | null;
+  onImplement: () => void;
 }
 
 export function GuidePanel({
@@ -17,6 +22,11 @@ export function GuidePanel({
   disabled,
   onGenerate,
   onOpenFile,
+  implementLoading,
+  implementLog,
+  implementResult,
+  implementError,
+  onImplement,
 }: Props) {
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
 
@@ -81,6 +91,42 @@ export function GuidePanel({
               />
             ))}
           </div>
+
+          <button
+            className="btn btn-primary"
+            onClick={onImplement}
+            disabled={implementLoading}
+            style={{ marginTop: 8 }}
+          >
+            {implementLoading ? (
+              <span className="btn-loading">
+                <span className="spinner-dot" />
+                <span className="spinner-dot" />
+                <span className="spinner-dot" />
+              </span>
+            ) : (
+              'Implement'
+            )}
+          </button>
+
+          {(implementLoading || implementLog.length > 0) && (
+            <ImplementLog lines={implementLog} />
+          )}
+
+          {implementError && (
+            <div className="error-banner">
+              <span className="error-icon">⚠</span>
+              <span>{implementError}</span>
+            </div>
+          )}
+
+          {implementResult && (
+            <div className="success-banner">
+              Applied {implementResult.filesModified.length} file
+              {implementResult.filesModified.length !== 1 ? 's' : ''}:{' '}
+              {implementResult.filesModified.join(', ')}
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -147,6 +193,23 @@ function FileRefRow({ ref_, onOpenFile }: FileRefRowProps) {
       {ref_.description && (
         <p className="file-ref-desc">{ref_.description}</p>
       )}
+    </div>
+  );
+}
+
+function ImplementLog({ lines }: { lines: string[] }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [lines]);
+
+  return (
+    <div className="implement-log">
+      {lines.map((line, i) => (
+        <div key={i} className="implement-log-line">{line}</div>
+      ))}
+      <div ref={bottomRef} />
     </div>
   );
 }

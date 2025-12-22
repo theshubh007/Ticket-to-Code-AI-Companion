@@ -687,3 +687,38 @@ body {
   gap: 8px;
   padding: 4px 0;
 }
+
+/* ─── Implement Log ──────────────────────────────────────────────── */
+
+.implement-log {
+  background: var(--vscode-terminal-background, #1e1e1e);
+  border: 1px solid var(--vscode-sideBarSectionHeader-border, #333);
+  border-radius: 4px;
+  padding: 6px 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.implement-log-line {
+  color: var(--vscode-terminal-foreground, #d4d4d4);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ─── Success Banner ─────────────────────────────────────────────── */
+
+.success-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(115, 201, 145, 0.1);
+  border: 1px solid rgba(115, 201, 145, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+  line-height: 1.4;
+}

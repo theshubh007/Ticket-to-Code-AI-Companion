@@ -6,10 +6,12 @@ import {
   CodeChunk,
   ImplementationGuide,
   AISettings,
+  FileDiff,
 } from './types';
 import { TicketPanel } from './components/TicketPanel/TicketPanel';
 import { AnalysisPanel } from './components/AnalysisPanel/AnalysisPanel';
 import { GuidePanel } from './components/GuidePanel/GuidePanel';
+import { DiffViewer } from './components/DiffViewer/DiffViewer';
 
 const OPENROUTER_CHAT_MODELS = new Set([
   '~anthropic/claude-haiku-latest',
@@ -46,6 +48,12 @@ export type AppState = {
   guide: ImplementationGuide | null;
   guideError: string | null;
   guideLoading: boolean;
+
+  implementLoading: boolean;
+  implementLog: string[];
+  implementResult: { filesModified: string[] } | null;
+  implementError: string | null;
+  pendingDiffs: FileDiff[] | null;
 };
 
 const initialState: AppState = {
@@ -68,6 +76,12 @@ const initialState: AppState = {
   guide: null,
   guideError: null,
   guideLoading: false,
+
+  implementLoading: false,
+  implementLog: [],
+  implementResult: null,
+  implementError: null,
+  pendingDiffs: null,
 };
 
 export function App() {
@@ -188,6 +202,40 @@ export function App() {
             guideLoading: false,
           });
           break;
+
+        case 'implementProgress': {
+          const prog = payload as { step: number; total: number; stepTitle: string; phase: string; filePath?: string };
+          const line =
+            prog.phase === 'reading'
+              ? `[${prog.step}/${prog.total}] Reading files for: ${prog.stepTitle}`
+              : prog.phase === 'generating'
+              ? `[${prog.step}/${prog.total}] Generating changes for: ${prog.stepTitle}`
+              : `[${prog.step}/${prog.total}] Writing: ${prog.filePath ?? prog.stepTitle}`;
+          setState((prev) => ({ ...prev, implementLog: [...prev.implementLog, line] }));
+          break;
+        }
+
+        case 'diffResult':
+          updateState({
+            pendingDiffs: (payload as { diffs: FileDiff[] }).diffs,
+            implementLoading: false,
+          });
+          break;
+
+        case 'implementResult':
+          updateState({
+            implementResult: payload as { filesModified: string[] },
+            implementLoading: false,
+            pendingDiffs: null,
+          });
+          break;
+
+        case 'implementError':
+          updateState({
+            implementError: payload as string,
+            implementLoading: false,
+          });
+          break;
       }
     };
 
@@ -242,6 +290,41 @@ export function App() {
     postMessage('generateGuide');
   }
 
+  function handleImplement() {
+    updateState({ implementLoading: true, implementLog: [], implementError: null, implementResult: null, pendingDiffs: null });
+    postMessage('implement');
+  }
+
+  function handleAcceptDiff(index: number) {
+    if (!state.pendingDiffs) return;
+    const updated = state.pendingDiffs.filter((_, i) => i !== index);
+    if (updated.length === 0) {
+      postMessage('applyDiffs', { diffs: state.pendingDiffs });
+    } else {
+      updateState({ pendingDiffs: updated });
+    }
+  }
+
+  function handleRejectDiff(index: number) {
+    if (!state.pendingDiffs) return;
+    const updated = state.pendingDiffs.filter((_, i) => i !== index);
+    if (updated.length === 0) {
+      updateState({ pendingDiffs: null });
+    } else {
+      updateState({ pendingDiffs: updated });
+    }
+  }
+
+  function handleAcceptAll() {
+    if (!state.pendingDiffs) return;
+    postMessage('applyDiffs', { diffs: state.pendingDiffs });
+    updateState({ pendingDiffs: null });
+  }
+
+  function handleCancelDiff() {
+    updateState({ pendingDiffs: null });
+  }
+
   function handleOpenFile(filePath: string, startLine: number, endLine: number) {
     postMessage('openFile', { filePath, startLine, endLine });
   }
@@ -257,6 +340,18 @@ export function App() {
       ticket.summary.toLowerCase().includes(normalizedSearch)
     );
   });
+
+  if (state.pendingDiffs) {
+    return (
+      <div className="app">
+        <DiffViewer
+          diffs={state.pendingDiffs}
+          onAcceptAll={handleAcceptAll}
+          onCancel={handleCancelDiff}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -299,6 +394,11 @@ export function App() {
         disabled={!state.chunks}
         onGenerate={handleGenerateGuide}
         onOpenFile={handleOpenFile}
+        implementLoading={state.implementLoading}
+        implementLog={state.implementLog}
+        implementResult={state.implementResult}
+        implementError={state.implementError}
+        onImplement={handleImplement}
       />
     </div>
   );
