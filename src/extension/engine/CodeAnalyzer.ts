@@ -6,6 +6,7 @@ import { rankChunks } from '../utils/similarity';
 import { OpenAIClient } from '../clients/OpenAIClient';
 import { CacheManager } from './CacheManager';
 import { PerformanceMonitor } from '../utils/performanceMonitor';
+import { EMBEDDING_MODEL } from './Security';
 
 const EMBEDDING_BATCH_SIZE = 50;
 const MAX_CONCURRENT_BATCHES = 3;
@@ -32,9 +33,15 @@ export class CodeAnalyzer {
     const cached = await this.cache.getEmbeddingIndex();
     this.monitor.end('cache-load');
 
+    if (cached && cached.model !== EMBEDDING_MODEL) {
+      console.log(`Embedding cache cleared: model changed to ${EMBEDDING_MODEL}`);
+      await this.cache.clearEmbeddingIndex();
+    }
+
+    const validCache = cached?.model === EMBEDDING_MODEL ? cached : null;
     const existingMap = new Map<string, CodeChunk[]>();
-    if (cached) {
-      for (const chunk of cached.chunks) {
+    if (validCache) {
+      for (const chunk of validCache.chunks) {
         if (!existingMap.has(chunk.filePath)) {
           existingMap.set(chunk.filePath, []);
         }
@@ -121,6 +128,7 @@ export class CodeAnalyzer {
     this.monitor.start('cache-save');
     const index: EmbeddingIndex = {
       version: 1,
+      model: EMBEDDING_MODEL,
       createdAt: new Date().toISOString(),
       chunks: allChunks,
     };

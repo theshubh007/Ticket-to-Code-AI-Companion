@@ -17,10 +17,12 @@ export interface AISettings {
   embeddingModel: string;
 }
 
+export const EMBEDDING_MODEL = 'openai/text-embedding-3-large';
+
 const DEFAULT_MODELS: Record<AIProvider, { chat: string; embedding: string }> = {
   openrouter: {
     chat: '~anthropic/claude-haiku-latest',
-    embedding: 'openai/text-embedding-3-small',
+    embedding: EMBEDDING_MODEL,
   },
 };
 
