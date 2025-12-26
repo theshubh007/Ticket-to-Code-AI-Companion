@@ -13,6 +13,7 @@ import {
   TicketData,
   ImplementationGuide,
   FileDiff,
+  ModelSummary,
 } from '../types';
 import { openFileAtRange, getWorkspaceRoot } from '../utils/editorNavigation';
 import {
@@ -26,6 +27,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastTicket?: TicketData;
   private _lastChunks?: CodeChunk[];
   private _lastGuide?: ImplementationGuide;
+  private _modelListCache: ModelSummary[] | null = null;
+  private _modelListCachedAt = 0;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -82,6 +85,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           case 'applyDiffs':
             await this._handleApplyDiffs(message.payload.diffs);
+            break;
+          case 'getModelList':
+            await this._handleGetModelList();
             break;
           case 'openFile': {
             const { filePath, startLine, endLine } = message.payload;
@@ -368,6 +374,38 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this._post({ command: 'implementResult', payload: { filesModified } });
     } catch (err) {
       this._post({ command: 'implementError', payload: (err as Error).message });
+    }
+  }
+
+  private async _handleGetModelList(): Promise<void> {
+    const DEFAULTS: ModelSummary[] = [
+      { id: '~anthropic/claude-haiku-latest', name: 'Claude Haiku (latest)' },
+      { id: '~google/gemini-flash-latest', name: 'Gemini Flash (latest)' },
+    ];
+
+    const ONE_HOUR = 60 * 60 * 1000;
+    if (this._modelListCache && Date.now() - this._modelListCachedAt < ONE_HOUR) {
+      this._post({ command: 'modelList', payload: this._modelListCache });
+      return;
+    }
+
+    const apiKey = await this._security.getProviderApiKey('openrouter');
+    if (!apiKey) {
+      this._post({ command: 'modelList', payload: DEFAULTS });
+      return;
+    }
+
+    try {
+      const models = await this._aiEngine.fetchModels(apiKey);
+      const defaultIds = new Set(DEFAULTS.map((d) => d.id));
+      const rest = models.filter((m) => !defaultIds.has(m.id));
+      const list = [...DEFAULTS, ...rest];
+      this._modelListCache = list;
+      this._modelListCachedAt = Date.now();
+      this._post({ command: 'modelList', payload: list });
+    } catch {
+      this._post({ command: 'modelListError', payload: 'Failed to load model list. Showing defaults.' });
+      this._post({ command: 'modelList', payload: DEFAULTS });
     }
   }
 

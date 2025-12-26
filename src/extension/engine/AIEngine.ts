@@ -90,6 +90,10 @@ interface RawGuideResponse {
 export class AIEngine {
   constructor(private readonly openAI: OpenAIClient) {}
 
+  async fetchModels(apiKey: string): Promise<{ id: string; name: string }[]> {
+    return this.openAI.fetchModels(apiKey);
+  }
+
   buildPrompt(ticket: TicketData, chunks: CodeChunk[]): ChatMessage[] {
     const ticketSection = this._formatTicket(ticket);
     const snippetsSection = this._formatSnippets(chunks);

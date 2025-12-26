@@ -162,6 +162,70 @@ export class OpenAIClient {
     });
   }
 
+  async fetchModels(apiKey: string): Promise<{ id: string; name: string }[]> {
+    const runtime: RuntimeAIConfig = {
+      provider: 'openrouter',
+      apiKey,
+      chatModel: '',
+      embeddingModel: '',
+    };
+    const response = await this._get('/api/v1/models', runtime);
+    const data = (response as { data: { id: string; name: string }[] }).data;
+    return data
+      .filter((m) => !m.id.toLowerCase().includes('embedding'))
+      .map((m) => ({ id: m.id, name: m.name ?? m.id }));
+  }
+
+  private async _get(
+    path: string,
+    runtime: RuntimeAIConfig,
+    timeoutMs = 10000
+  ): Promise<unknown> {
+    const host = runtime.provider === 'openrouter' ? 'openrouter.ai' : 'api.openai.com';
+    const apiPath = runtime.provider === 'openrouter' ? `/api${path}` : path;
+    const providerName = runtime.provider === 'openrouter' ? 'OpenRouter' : 'OpenAI';
+
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: host,
+        path: apiPath,
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${runtime.apiKey}`,
+        },
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              resolve(JSON.parse(data));
+            } catch {
+              reject(new Error(`Failed to parse ${providerName} response as JSON`));
+            }
+          } else if (res.statusCode === 401) {
+            reject(new Error(`${providerName} authentication failed. Check your API key.`));
+          } else {
+            reject(new Error(`${providerName} API error: HTTP ${res.statusCode}`));
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        reject(new Error(`Network error reaching ${providerName}: ${err.message}`));
+      });
+
+      req.setTimeout(timeoutMs, () => {
+        req.destroy();
+        reject(new Error(`${providerName} request timed out after ${timeoutMs / 1000}s`));
+      });
+
+      req.end();
+    });
+  }
+
   private _chunk<T>(arr: T[], size: number): T[][] {
     const chunks: T[][] = [];
     for (let i = 0; i < arr.length; i += size) {

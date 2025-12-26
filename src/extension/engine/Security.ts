@@ -87,9 +87,7 @@ export class Security {
   async getAISettings(): Promise<AISettings> {
     const provider: AIProvider = 'openrouter';
     const storedChatModel = (await this.get('aiChatModel'))?.trim() ?? '';
-    const chatModel = OPENROUTER_CHAT_MODELS.has(storedChatModel)
-      ? storedChatModel
-      : DEFAULT_MODELS.openrouter.chat;
+    const chatModel = storedChatModel || DEFAULT_MODELS.openrouter.chat;
 
     return {
       provider,
@@ -102,12 +100,6 @@ export class Security {
     const chatModel = settings.chatModel.trim();
     if (!chatModel) {
       throw new Error('Chat model is required.');
-    }
-
-    if (!OPENROUTER_CHAT_MODELS.has(chatModel)) {
-      throw new Error(
-        `Unsupported OpenRouter model: ${chatModel}. Use one of the models in AI Settings.`
-      );
     }
 
     await this.set('aiChatModel', chatModel);

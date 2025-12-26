@@ -57,3 +57,8 @@ export interface FileDiff {
   oldCode: string;
   newCode: string;
 }
+
+export interface ModelSummary {
+  id: string;
+  name: string;
+}

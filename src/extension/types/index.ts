@@ -70,6 +70,11 @@ export interface FileDiff {
   newCode: string;
 }
 
+export interface ModelSummary {
+  id: string;
+  name: string;
+}
+
 // ─── WebView Message Protocol ─────────────────────────────────────────────────
 // Discriminated unions — every message has a command field as the discriminator
 
@@ -89,6 +94,7 @@ export type MessageFromWebview =
   | { command: 'generateGuide' }
   | { command: 'implement' }
   | { command: 'applyDiffs'; payload: { diffs: FileDiff[] } }
+  | { command: 'getModelList' }
   | { command: 'openFile'; payload: { filePath: string; startLine: number; endLine: number } };
 
 export type MessageToWebview =
@@ -108,4 +114,6 @@ export type MessageToWebview =
   | { command: 'implementProgress'; payload: { step: number; total: number; stepTitle: string; phase: 'reading' | 'generating' | 'writing'; filePath?: string } }
   | { command: 'diffResult'; payload: { diffs: FileDiff[] } }
   | { command: 'implementResult'; payload: { filesModified: string[] } }
-  | { command: 'implementError'; payload: string };
+  | { command: 'implementError'; payload: string }
+  | { command: 'modelList'; payload: ModelSummary[] }
+  | { command: 'modelListError'; payload: string };

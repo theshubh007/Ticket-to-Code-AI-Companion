@@ -7,23 +7,12 @@ import {
   ImplementationGuide,
   AISettings,
   FileDiff,
+  ModelSummary,
 } from './types';
 import { TicketPanel } from './components/TicketPanel/TicketPanel';
 import { AnalysisPanel } from './components/AnalysisPanel/AnalysisPanel';
 import { GuidePanel } from './components/GuidePanel/GuidePanel';
 import { DiffViewer } from './components/DiffViewer/DiffViewer';
-
-const OPENROUTER_CHAT_MODELS = new Set([
-  '~anthropic/claude-haiku-latest',
-  '~google/gemini-flash-latest',
-]);
-
-function normalizeOpenRouterChatModel(model: string): string {
-  const trimmed = model.trim();
-  return OPENROUTER_CHAT_MODELS.has(trimmed)
-    ? trimmed
-    : '~anthropic/claude-haiku-latest';
-}
 
 export type AppState = {
   aiChatModel: string;
@@ -54,6 +43,9 @@ export type AppState = {
   implementResult: { filesModified: string[] } | null;
   implementError: string | null;
   pendingDiffs: FileDiff[] | null;
+
+  modelList: ModelSummary[] | null;
+  modelListLoading: boolean;
 };
 
 const initialState: AppState = {
@@ -82,6 +74,9 @@ const initialState: AppState = {
   implementResult: null,
   implementError: null,
   pendingDiffs: null,
+
+  modelList: null,
+  modelListLoading: false,
 };
 
 export function App() {
@@ -110,7 +105,7 @@ export function App() {
         case 'aiSettings': {
           const settings = payload as AISettings;
           updateState({
-            aiChatModel: normalizeOpenRouterChatModel(settings.chatModel),
+            aiChatModel: settings.chatModel.trim() || '~anthropic/claude-haiku-latest',
             aiHasApiKey: settings.hasApiKey,
             aiSettingsLoading: false,
             aiSettingsError: null,
@@ -236,11 +231,24 @@ export function App() {
             implementLoading: false,
           });
           break;
+
+        case 'modelList':
+          updateState({ modelList: payload as ModelSummary[], modelListLoading: false });
+          break;
+
+        case 'modelListError':
+          updateState({ modelListLoading: false });
+          break;
       }
     };
 
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
+  }, [updateState]);
+
+  const handleGetModelList = useCallback(() => {
+    updateState({ modelListLoading: true });
+    postMessage('getModelList');
   }, [updateState]);
 
   function handleRetryList() {
@@ -255,7 +263,7 @@ export function App() {
   function handleSaveAISettings() {
     updateState({ aiSettingsLoading: true, aiSettingsError: null, aiSettingsStatus: null });
     postMessage('saveAISettings', {
-      chatModel: normalizeOpenRouterChatModel(state.aiChatModel),
+      chatModel: state.aiChatModel.trim(),
       apiKey: apiKeyInput.trim() || undefined,
     });
   }
@@ -377,6 +385,9 @@ export function App() {
         onFetch={handleFetchTicket}
         onClearTicket={handleClearTicket}
         onRetryList={handleRetryList}
+        modelList={state.modelList}
+        modelListLoading={state.modelListLoading}
+        onGetModelList={handleGetModelList}
       />
       <AnalysisPanel
         chunks={state.chunks}
