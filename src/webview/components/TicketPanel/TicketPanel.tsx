@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { TicketData, TicketSummary } from '../../types';
+import { TicketData, TicketSummary, ModelSummary } from '../../types';
 import { Spinner } from '../shared/Spinner';
 import { ErrorBanner } from '../shared/ErrorBanner';
 
-const OPENROUTER_MODELS = [
-  '~anthropic/claude-haiku-latest',
-  '~google/gemini-flash-latest',
+const PINNED_IDS = ['~anthropic/claude-haiku-latest', '~google/gemini-flash-latest'];
+const PINNED_DEFAULTS: ModelSummary[] = [
+  { id: '~anthropic/claude-haiku-latest', name: 'Claude Haiku (latest)' },
+  { id: '~google/gemini-flash-latest', name: 'Gemini Flash (latest)' },
 ];
 
 interface Props {
@@ -23,6 +24,8 @@ interface Props {
   ticket: TicketData | null;
   error: string | null;
   loading: boolean;
+  modelList: ModelSummary[] | null;
+  modelListLoading: boolean;
   onTicketSearchChange: (value: string) => void;
   onChatModelChange: (value: string) => void;
   onApiKeyInputChange: (value: string) => void;
@@ -30,6 +33,7 @@ interface Props {
   onFetch: (key: string) => void;
   onClearTicket: () => void;
   onRetryList: () => void;
+  onGetModelList: () => void;
 }
 
 export function TicketPanel({
@@ -47,6 +51,8 @@ export function TicketPanel({
   ticket,
   error,
   loading,
+  modelList,
+  modelListLoading,
   onTicketSearchChange,
   onChatModelChange,
   onApiKeyInputChange,
@@ -54,17 +60,16 @@ export function TicketPanel({
   onFetch,
   onClearTicket,
   onRetryList,
+  onGetModelList,
 }: Props) {
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [expanded, setExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [modelSearch, setModelSearch] = useState('');
   const trimmedSearch = ticketSearch.trim();
   const visibleTicketCount = ticketList?.length ?? 0;
   const hasActiveFilter = trimmedSearch.length > 0;
-  const modelValue = OPENROUTER_MODELS.includes(chatModel)
-    ? chatModel
-    : OPENROUTER_MODELS[0];
-  const modelOptions = OPENROUTER_MODELS;
 
   let ticketCountLabel = `${totalTicketCount} ${totalTicketCount === 1 ? 'ticket' : 'tickets'}`;
   if (hasActiveFilter && totalTicketCount !== visibleTicketCount) {
@@ -78,13 +83,30 @@ export function TicketPanel({
     }
   }, [ticket, loading]);
 
+  useEffect(() => {
+    if (settingsOpen) {
+      onGetModelList();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsOpen]);
+
+  const searchLower = modelSearch.toLowerCase();
+  const pinnedItems = modelList
+    ? modelList.filter((m) => PINNED_IDS.includes(m.id))
+    : PINNED_DEFAULTS;
+  const otherItems = (modelList ?? [])
+    .filter((m) => !PINNED_IDS.includes(m.id))
+    .filter(
+      (m) =>
+        !searchLower ||
+        m.id.toLowerCase().includes(searchLower) ||
+        m.name.toLowerCase().includes(searchLower)
+    );
+  const dropdownItems = [...pinnedItems, ...otherItems];
+
   function handleBack() {
     setView('list');
     onClearTicket();
-  }
-
-  function handleModelSelect(value: string) {
-    onChatModelChange(value);
   }
 
   return (
@@ -140,22 +162,43 @@ export function TicketPanel({
       {view === 'list' && settingsOpen && (
         <div className="ticket-settings-card">
           <div className="settings-grid">
-            <label className="settings-label" htmlFor="model-select">
+            <label className="settings-label" htmlFor="model-input">
               Model
             </label>
-            <select
-              id="model-select"
-              className="text-input settings-select"
-              value={modelValue}
-              onChange={(event) => handleModelSelect(event.target.value)}
-              disabled={settingsLoading}
-            >
-              {modelOptions.map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
+            <div className="model-combobox">
+              <input
+                id="model-input"
+                className="text-input"
+                type="text"
+                value={chatModel}
+                onChange={(e) => { onChatModelChange(e.target.value); setModelSearch(e.target.value); setDropdownOpen(true); }}
+                onFocus={() => setDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                disabled={settingsLoading}
+                placeholder="Type or select a model"
+                autoComplete="off"
+              />
+              {dropdownOpen && (
+                <ul className="model-dropdown" onMouseDown={(e) => e.preventDefault()}>
+                  {modelListLoading && dropdownItems.length === 0 && (
+                    <li className="model-dropdown-hint">Loading models…</li>
+                  )}
+                  {dropdownItems.map((m, i) => (
+                    <li
+                      key={m.id}
+                      className={`model-dropdown-item${i < pinnedItems.length ? ' model-dropdown-item--pinned' : ''}`}
+                      onMouseDown={() => { onChatModelChange(m.id); setModelSearch(''); setDropdownOpen(false); }}
+                    >
+                      <span className="model-dropdown-name">{m.name}</span>
+                      <span className="model-dropdown-id">{m.id}</span>
+                    </li>
+                  ))}
+                  {!modelListLoading && dropdownItems.length === 0 && (
+                    <li className="model-dropdown-hint">No models match</li>
+                  )}
+                </ul>
+              )}
+            </div>
 
             <label className="settings-label" htmlFor="provider-key-input">
               API key
