@@ -688,68 +688,222 @@ body {
   padding: 4px 0;
 }
 
-/* ─── Model Combobox ─────────────────────────────────────────────── */
+/* ─── Model Picker Trigger ───────────────────────────────────────── */
 
-.model-combobox {
-  position: relative;
+.model-picker-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  border-radius: 2px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s ease;
 }
 
-.model-dropdown {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: var(--vscode-dropdown-background, #1e1e1e);
+.model-picker-trigger:hover:not(:disabled) {
+  border-color: var(--vscode-focusBorder);
+}
+
+.model-picker-trigger:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.model-picker-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-picker-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-picker-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
+}
+
+/* ─── Model Picker Dialog ────────────────────────────────────────── */
+
+.model-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 40px;
+  padding-bottom: 20px;
+}
+
+.model-dialog {
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 70px);
+  background: var(--vscode-dropdown-background, #252526);
   border: 1px solid var(--vscode-focusBorder);
-  border-radius: 4px;
-  list-style: none;
-  max-height: 220px;
-  overflow-y: auto;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-.model-dropdown-item {
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 6px 10px;
+  overflow: hidden;
+}
+
+.model-dialog-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #333);
+  flex-shrink: 0;
+}
+
+.model-dialog-search-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
+}
+
+.model-dialog-search {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  min-width: 0;
+}
+
+.model-dialog-search::placeholder {
+  color: var(--vscode-descriptionForeground);
+}
+
+.model-dialog-close {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
   cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.1s;
+}
+
+.model-dialog-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.model-dialog-close:hover {
+  opacity: 1;
+}
+
+.model-dialog-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.model-dialog-group {
+  padding: 6px 0;
   border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #333);
 }
 
-.model-dropdown-item:last-child {
+.model-dialog-group:last-child {
   border-bottom: none;
 }
 
-.model-dropdown-item:hover {
-  background: var(--vscode-list-hoverBackground);
+.model-dialog-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground);
+  padding: 4px 12px 4px;
 }
 
-.model-dropdown-item--pinned {
-  background: var(--vscode-editor-inactiveSelectionBackground);
-}
-
-.model-dropdown-item--pinned:hover {
-  background: var(--vscode-list-hoverBackground);
-}
-
-.model-dropdown-name {
-  font-size: 11px;
+.model-dialog-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
   color: var(--vscode-foreground);
-  font-weight: 500;
+  font-family: var(--vscode-font-family);
+  transition: background 0.08s;
 }
 
-.model-dropdown-id {
+.model-dialog-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.model-dialog-item--selected {
+  background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.07));
+}
+
+.model-dialog-item--selected:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.model-dialog-item-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.model-dialog-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-dialog-item-id {
   font-size: 10px;
   color: var(--vscode-descriptionForeground);
   font-family: var(--vscode-editor-font-family, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.model-dropdown-hint {
-  padding: 8px 10px;
+.model-dialog-check {
+  width: 14px;
+  height: 14px;
+  color: var(--vscode-testing-iconPassed, #4caf50);
+  flex-shrink: 0;
+}
+
+.model-dialog-hint {
+  padding: 12px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
+  text-align: center;
 }
 
 /* ─── Implement Log ──────────────────────────────────────────────── */

@@ -2,12 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TicketData, TicketSummary, ModelSummary } from '../../types';
 import { Spinner } from '../shared/Spinner';
 import { ErrorBanner } from '../shared/ErrorBanner';
-
-const PINNED_IDS = ['~anthropic/claude-haiku-latest', '~google/gemini-flash-latest'];
-const PINNED_DEFAULTS: ModelSummary[] = [
-  { id: '~anthropic/claude-haiku-latest', name: 'Claude Haiku (latest)' },
-  { id: '~google/gemini-flash-latest', name: 'Gemini Flash (latest)' },
-];
+import { ModelPickerDialog } from '../ModelPickerDialog/ModelPickerDialog';
 
 interface Props {
   ticketList: TicketSummary[] | null;
@@ -65,8 +60,6 @@ export function TicketPanel({
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [expanded, setExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [modelSearch, setModelSearch] = useState('');
   const trimmedSearch = ticketSearch.trim();
   const visibleTicketCount = ticketList?.length ?? 0;
   const hasActiveFilter = trimmedSearch.length > 0;
@@ -89,20 +82,6 @@ export function TicketPanel({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsOpen]);
-
-  const searchLower = modelSearch.toLowerCase();
-  const pinnedItems = modelList
-    ? modelList.filter((m) => PINNED_IDS.includes(m.id))
-    : PINNED_DEFAULTS;
-  const otherItems = (modelList ?? [])
-    .filter((m) => !PINNED_IDS.includes(m.id))
-    .filter(
-      (m) =>
-        !searchLower ||
-        m.id.toLowerCase().includes(searchLower) ||
-        m.name.toLowerCase().includes(searchLower)
-    );
-  const dropdownItems = [...pinnedItems, ...otherItems];
 
   function handleBack() {
     setView('list');
@@ -162,43 +141,16 @@ export function TicketPanel({
       {view === 'list' && settingsOpen && (
         <div className="ticket-settings-card">
           <div className="settings-grid">
-            <label className="settings-label" htmlFor="model-input">
+            <label className="settings-label">
               Model
             </label>
-            <div className="model-combobox">
-              <input
-                id="model-input"
-                className="text-input"
-                type="text"
-                value={chatModel}
-                onChange={(e) => { onChatModelChange(e.target.value); setModelSearch(e.target.value); setDropdownOpen(true); }}
-                onFocus={() => setDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
-                disabled={settingsLoading}
-                placeholder="Type or select a model"
-                autoComplete="off"
-              />
-              {dropdownOpen && (
-                <ul className="model-dropdown" onMouseDown={(e) => e.preventDefault()}>
-                  {modelListLoading && dropdownItems.length === 0 && (
-                    <li className="model-dropdown-hint">Loading models…</li>
-                  )}
-                  {dropdownItems.map((m, i) => (
-                    <li
-                      key={m.id}
-                      className={`model-dropdown-item${i < pinnedItems.length ? ' model-dropdown-item--pinned' : ''}`}
-                      onMouseDown={() => { onChatModelChange(m.id); setModelSearch(''); setDropdownOpen(false); }}
-                    >
-                      <span className="model-dropdown-name">{m.name}</span>
-                      <span className="model-dropdown-id">{m.id}</span>
-                    </li>
-                  ))}
-                  {!modelListLoading && dropdownItems.length === 0 && (
-                    <li className="model-dropdown-hint">No models match</li>
-                  )}
-                </ul>
-              )}
-            </div>
+            <ModelPickerDialog
+              currentModel={chatModel}
+              modelList={modelList}
+              modelListLoading={modelListLoading}
+              disabled={settingsLoading}
+              onSelect={onChatModelChange}
+            />
 
             <label className="settings-label" htmlFor="provider-key-input">
               API key
