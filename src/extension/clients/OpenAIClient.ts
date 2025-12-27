@@ -162,14 +162,14 @@ export class OpenAIClient {
     });
   }
 
-  async fetchModels(apiKey: string): Promise<{ id: string; name: string }[]> {
+  async fetchModels(apiKey?: string): Promise<{ id: string; name: string }[]> {
     const runtime: RuntimeAIConfig = {
       provider: 'openrouter',
-      apiKey,
+      apiKey: apiKey ?? '',
       chatModel: '',
       embeddingModel: '',
     };
-    const response = await this._get('/api/v1/models', runtime);
+    const response = await this._get('/v1/models', runtime);
     const data = (response as { data: { id: string; name: string }[] }).data;
     return data
       .filter((m) => !m.id.toLowerCase().includes('embedding'))
@@ -186,13 +186,15 @@ export class OpenAIClient {
     const providerName = runtime.provider === 'openrouter' ? 'OpenRouter' : 'OpenAI';
 
     return new Promise((resolve, reject) => {
+      const headers: Record<string, string> = {};
+      if (runtime.apiKey) {
+        headers['Authorization'] = `Bearer ${runtime.apiKey}`;
+      }
       const options = {
         hostname: host,
         path: apiPath,
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${runtime.apiKey}`,
-        },
+        headers,
       };
 
       const req = https.request(options, (res) => {

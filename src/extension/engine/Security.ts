@@ -26,10 +26,6 @@ const DEFAULT_MODELS: Record<AIProvider, { chat: string; embedding: string }> = 
   },
 };
 
-const OPENROUTER_CHAT_MODELS = new Set([
-  '~anthropic/claude-haiku-latest',
-  '~google/gemini-flash-latest',
-]);
 
 export class Security {
   constructor(private readonly secrets: vscode.SecretStorage) {}

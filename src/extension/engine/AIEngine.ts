@@ -90,7 +90,7 @@ interface RawGuideResponse {
 export class AIEngine {
   constructor(private readonly openAI: OpenAIClient) {}
 
-  async fetchModels(apiKey: string): Promise<{ id: string; name: string }[]> {
+  async fetchModels(apiKey?: string): Promise<{ id: string; name: string }[]> {
     return this.openAI.fetchModels(apiKey);
   }
 

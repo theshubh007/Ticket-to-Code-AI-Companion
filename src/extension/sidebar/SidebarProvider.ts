@@ -390,13 +390,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const apiKey = await this._security.getProviderApiKey('openrouter');
-    if (!apiKey) {
-      this._post({ command: 'modelList', payload: DEFAULTS });
-      return;
-    }
 
     try {
-      const models = await this._aiEngine.fetchModels(apiKey);
+      const models = await this._aiEngine.fetchModels(apiKey ?? '');
       const defaultIds = new Set(DEFAULTS.map((d) => d.id));
       const rest = models.filter((m) => !defaultIds.has(m.id));
       const list = [...DEFAULTS, ...rest];
