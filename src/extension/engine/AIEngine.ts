@@ -167,7 +167,7 @@ Apply the changes for this step.`;
           { role: 'system', content: APPLY_SYSTEM_PROMPT },
           { role: 'user', content: userMessage },
         ],
-        'json',
+        'text',   // <output> tag extraction — not json_object mode (contradicts the prompt)
         120000
       );
     } catch (err) {
