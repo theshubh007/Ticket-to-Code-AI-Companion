@@ -679,6 +679,30 @@ body {
   max-height: none;
 }
 
+/* ─── Implement Confirm ──────────────────────────────────────────── */
+
+.implement-confirm {
+  background: var(--vscode-inputValidation-warningBackground, #352a05);
+  border: 1px solid var(--vscode-inputValidation-warningBorder, #b89500);
+  border-radius: 2px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.implement-confirm-text {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--vscode-foreground);
+}
+
+.implement-confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* ─── Shared ─────────────────────────────────────────────────────── */
 
 .spinner-wrap {

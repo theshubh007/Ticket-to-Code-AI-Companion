@@ -29,6 +29,7 @@ export function GuidePanel({
   onImplement,
 }: Props) {
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
+  const [confirmImplement, setConfirmImplement] = useState(false);
 
   return (
     <section className={`panel ${disabled ? 'panel--disabled' : ''}`}>
@@ -92,22 +93,44 @@ export function GuidePanel({
             ))}
           </div>
 
-          <button
-            className="btn btn-primary"
-            onClick={onImplement}
-            disabled={implementLoading}
-            style={{ marginTop: 8 }}
-          >
-            {implementLoading ? (
-              <span className="btn-loading">
-                <span className="spinner-dot" />
-                <span className="spinner-dot" />
-                <span className="spinner-dot" />
-              </span>
-            ) : (
-              'Implement'
-            )}
-          </button>
+          {!confirmImplement && (
+            <button
+              className="btn btn-primary"
+              onClick={() => setConfirmImplement(true)}
+              disabled={implementLoading}
+              style={{ marginTop: 8 }}
+            >
+              {implementLoading ? (
+                <span className="btn-loading">
+                  <span className="spinner-dot" />
+                  <span className="spinner-dot" />
+                  <span className="spinner-dot" />
+                </span>
+              ) : (
+                'Implement'
+              )}
+            </button>
+          )}
+
+          {confirmImplement && !implementLoading && (
+            <div className="implement-confirm">
+              <p className="implement-confirm-text">
+                This will modify {guide.steps.length} step{guide.steps.length !== 1 ? 's' : ''} worth of files in your workspace. Continue?
+              </p>
+              <div className="implement-confirm-actions">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => { setConfirmImplement(false); onImplement(); }}
+                >
+                  Yes, implement
+                </button>
+                <button className="btn btn-secondary" onClick={() => setConfirmImplement(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
 
           {(implementLoading || implementLog.length > 0) && (
             <ImplementLog lines={implementLog} />
