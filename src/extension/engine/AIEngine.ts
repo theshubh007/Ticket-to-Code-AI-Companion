@@ -168,7 +168,8 @@ Apply the changes for this step.`;
           { role: 'user', content: userMessage },
         ],
         'text',   // <output> tag extraction — not json_object mode (contradicts the prompt)
-        120000
+        120000,
+        8192      // large files can produce 80+ line replacements; 1024 default truncates them
       );
     } catch (err) {
       throw new Error(`LLM call failed: ${(err as Error).message}`);

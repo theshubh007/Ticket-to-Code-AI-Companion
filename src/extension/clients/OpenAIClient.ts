@@ -75,15 +75,16 @@ export class OpenAIClient {
   async chat(
     messages: ChatMessage[],
     responseFormat: 'text' | 'json' = 'text',
-    timeoutMs = 30000
+    timeoutMs = 30000,
+    maxTokens?: number
   ): Promise<string> {
     const runtime = await this.resolveRuntime();
-    const maxTokens = responseFormat === 'json' ? 4096 : 1024;
+    const resolvedMaxTokens = maxTokens ?? (responseFormat === 'json' ? 4096 : 1024);
     const body: Record<string, unknown> = {
       model: runtime.chatModel,
       messages,
       temperature: 0.2,
-      max_tokens: maxTokens,
+      max_tokens: resolvedMaxTokens,
     };
 
     if (responseFormat === 'json') {
