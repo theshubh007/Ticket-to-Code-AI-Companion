@@ -29,6 +29,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastGuide?: ImplementationGuide;
   private _modelListCache: ModelSummary[] | null = null;
   private _modelListCachedAt = 0;
+  private _preApplyContents: Map<string, string> = new Map();
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -85,6 +86,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           case 'applyDiffs':
             await this._handleApplyDiffs(message.payload.diffs);
+            break;
+          case 'undoApply':
+            await this._handleUndoApply();
             break;
           case 'getModelList':
             await this._handleGetModelList();
@@ -351,6 +355,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         .filter(([p, content]) => content !== initialFileContents.get(p))
         .map(([p, content]) => ({ filePath: p, oldCode: initialFileContents.get(p) ?? '', newCode: content }));
 
+      // Persist snapshot so undo can restore original content
+      this._preApplyContents = new Map(initialFileContents);
+
       this._post({ command: 'diffResult', payload: { diffs } });
     } catch (err) {
       this._post({ command: 'implementError', payload: (err as Error).message });
@@ -364,6 +371,40 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    // Conflict detection: check if any file changed since Implement ran
+    const conflictingPaths: string[] = [];
+    for (const diff of diffs) {
+      const snapshot = this._preApplyContents.get(diff.filePath);
+      if (snapshot === undefined) continue;
+      try {
+        const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), diff.filePath);
+        const bytes = await vscode.workspace.fs.readFile(absUri);
+        const currentContent = Buffer.from(bytes).toString('utf-8');
+        if (currentContent !== snapshot) {
+          conflictingPaths.push(diff.filePath);
+        }
+      } catch {
+        // file not found — treat as no conflict (new file)
+      }
+    }
+
+    if (conflictingPaths.length > 0) {
+      this._post({ command: 'conflictWarning', payload: { conflictingPaths } });
+    }
+
+    // Snapshot current content for undo before writing
+    const undoSnapshot = new Map<string, string>();
+    for (const diff of diffs) {
+      try {
+        const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), diff.filePath);
+        const bytes = await vscode.workspace.fs.readFile(absUri);
+        undoSnapshot.set(diff.filePath, Buffer.from(bytes).toString('utf-8'));
+      } catch {
+        undoSnapshot.set(diff.filePath, '');
+      }
+    }
+    this._preApplyContents = undoSnapshot;
+
     const filesModified: string[] = [];
     try {
       for (const diff of diffs) {
@@ -374,6 +415,32 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this._post({ command: 'implementResult', payload: { filesModified } });
     } catch (err) {
       this._post({ command: 'implementError', payload: (err as Error).message });
+    }
+  }
+
+  private async _handleUndoApply(): Promise<void> {
+    const root = getWorkspaceRoot();
+    if (!root) {
+      this._post({ command: 'undoError', payload: 'No workspace folder open.' });
+      return;
+    }
+
+    if (this._preApplyContents.size === 0) {
+      this._post({ command: 'undoError', payload: 'Nothing to undo.' });
+      return;
+    }
+
+    const filesRestored: string[] = [];
+    try {
+      for (const [relPath, content] of this._preApplyContents.entries()) {
+        const absUri = vscode.Uri.joinPath(vscode.Uri.file(root), relPath);
+        await vscode.workspace.fs.writeFile(absUri, Buffer.from(content, 'utf-8'));
+        filesRestored.push(relPath);
+      }
+      this._preApplyContents = new Map();
+      this._post({ command: 'undoResult', payload: { filesRestored } });
+    } catch (err) {
+      this._post({ command: 'undoError', payload: (err as Error).message });
     }
   }
 

@@ -93,7 +93,8 @@ export type MessageFromWebview =
   | { command: 'analyzeRepo'; payload: { ticketDescription: string } }
   | { command: 'generateGuide' }
   | { command: 'implement' }
-  | { command: 'applyDiffs'; payload: { diffs: FileDiff[] } }
+  | { command: 'applyDiffs'; payload: { diffs: { filePath: string; newCode: string }[] } }
+  | { command: 'undoApply' }
   | { command: 'getModelList' }
   | { command: 'openFile'; payload: { filePath: string; startLine: number; endLine: number } };
 
@@ -115,5 +116,8 @@ export type MessageToWebview =
   | { command: 'diffResult'; payload: { diffs: FileDiff[] } }
   | { command: 'implementResult'; payload: { filesModified: string[] } }
   | { command: 'implementError'; payload: string }
+  | { command: 'undoResult'; payload: { filesRestored: string[] } }
+  | { command: 'undoError'; payload: string }
+  | { command: 'conflictWarning'; payload: { conflictingPaths: string[] } }
   | { command: 'modelList'; payload: ModelSummary[] }
   | { command: 'modelListError'; payload: string };
