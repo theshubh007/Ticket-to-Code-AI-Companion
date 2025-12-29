@@ -964,3 +964,116 @@ body {
   color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
   line-height: 1.4;
 }
+
+/* ─── Snippet inline expand ──────────────────────────────────────── */
+
+.snippet-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.snippet-open-btn {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.snippet-expand-hint {
+  display: block;
+  font-size: 9px;
+  color: var(--vscode-descriptionForeground);
+  text-align: right;
+  margin-top: 4px;
+  opacity: 0.6;
+}
+
+/* ─── File ref inline expand ─────────────────────────────────────── */
+
+.file-ref-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.file-ref-open-btn {
+  font-size: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.file-ref-expand-hint {
+  font-size: 9px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.5;
+  align-self: flex-end;
+}
+
+/* ─── Last Apply Summary ─────────────────────────────────────────── */
+
+.last-apply-summary {
+  border: 1px solid rgba(115, 201, 145, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.last-apply-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(115, 201, 145, 0.08);
+  cursor: pointer;
+  user-select: none;
+}
+
+.last-apply-header:hover {
+  background: rgba(115, 201, 145, 0.14);
+}
+
+.last-apply-icon {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+  font-size: 12px;
+}
+
+.last-apply-title {
+  flex: 1;
+  font-size: 11px;
+  color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+  font-weight: 600;
+}
+
+.last-apply-chevron {
+  font-size: 9px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.last-apply-files {
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-top: 1px solid rgba(115, 201, 145, 0.15);
+}
+
+.last-apply-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.last-apply-file-path {
+  flex: 1;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.last-apply-actions {
+  padding: 6px 10px;
+  border-top: 1px solid rgba(115, 201, 145, 0.15);
+}

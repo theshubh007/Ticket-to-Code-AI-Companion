@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImplementationGuide, ImplementationStep, FileReference } from '../../types';
+import { ImplementationGuide, ImplementationStep, FileReference, FileDiff } from '../../types';
 
 interface Props {
   guide: ImplementationGuide | null;
@@ -13,6 +13,12 @@ interface Props {
   implementResult: { filesModified: string[] } | null;
   implementError: string | null;
   onImplement: () => void;
+  lastAppliedDiffs: FileDiff[] | null;
+  undoLoading: boolean;
+  undoStatus: string | null;
+  undoError: string | null;
+  conflictWarning: string[] | null;
+  onUndo: () => void;
 }
 
 export function GuidePanel({
@@ -27,6 +33,12 @@ export function GuidePanel({
   implementResult,
   implementError,
   onImplement,
+  lastAppliedDiffs,
+  undoLoading,
+  undoStatus,
+  undoError,
+  conflictWarning,
+  onUndo,
 }: Props) {
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [confirmImplement, setConfirmImplement] = useState(false);
@@ -143,12 +155,26 @@ export function GuidePanel({
             </div>
           )}
 
-          {implementResult && (
-            <div className="success-banner">
-              Applied {implementResult.filesModified.length} file
-              {implementResult.filesModified.length !== 1 ? 's' : ''}:{' '}
-              {implementResult.filesModified.join(', ')}
+          {conflictWarning && conflictWarning.length > 0 && (
+            <div className="error-banner">
+              <span className="error-icon">⚠</span>
+              <span>
+                {conflictWarning.length} file{conflictWarning.length !== 1 ? 's' : ''} changed
+                since guide was generated:{' '}
+                {conflictWarning.join(', ')}. Applied anyway — review carefully.
+              </span>
             </div>
+          )}
+
+          {implementResult && (
+            <LastApplySummary
+              diffs={lastAppliedDiffs}
+              filesModified={implementResult.filesModified}
+              undoLoading={undoLoading}
+              undoStatus={undoStatus}
+              undoError={undoError}
+              onUndo={onUndo}
+            />
           )}
         </div>
       )}
@@ -200,21 +226,102 @@ interface FileRefRowProps {
 }
 
 function FileRefRow({ ref_, onOpenFile }: FileRefRowProps) {
+  const [expanded, setExpanded] = React.useState(false);
+
   return (
     <div
       className="file-ref"
-      onClick={() => onOpenFile(ref_.filePath, ref_.startLine, ref_.endLine)}
-      title={ref_.description}
+      onClick={() => setExpanded((v) => !v)}
     >
-      <span className="file-ref-icon">↗</span>
-      <div className="file-ref-info">
-        <span className="file-ref-path">{ref_.filePath}</span>
-        <span className="file-ref-lines">
-          Lines {ref_.startLine}–{ref_.endLine}
-        </span>
+      <div className="file-ref-row">
+        <div className="file-ref-info">
+          <span className="file-ref-path">{ref_.filePath}</span>
+          <span className="file-ref-lines">
+            Lines {ref_.startLine}–{ref_.endLine}
+          </span>
+        </div>
+        <button
+          className="btn-link file-ref-open-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenFile(ref_.filePath, ref_.startLine, ref_.endLine);
+          }}
+          title="Open in editor"
+        >
+          ↗ Open
+        </button>
       </div>
-      {ref_.description && (
+      {expanded && ref_.description && (
         <p className="file-ref-desc">{ref_.description}</p>
+      )}
+      {!expanded && (
+        <span className="file-ref-expand-hint">▼</span>
+      )}
+      {expanded && (
+        <span className="file-ref-expand-hint">▲</span>
+      )}
+    </div>
+  );
+}
+
+interface LastApplySummaryProps {
+  diffs: FileDiff[] | null;
+  filesModified: string[];
+  undoLoading: boolean;
+  undoStatus: string | null;
+  undoError: string | null;
+  onUndo: () => void;
+}
+
+function LastApplySummary({ diffs, filesModified, undoLoading, undoStatus, undoError, onUndo }: LastApplySummaryProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  const addCount = diffs?.reduce((sum, d) => sum + d.newCode.split('\n').filter((l) => !d.oldCode.split('\n').includes(l)).length, 0) ?? 0;
+
+  return (
+    <div className="last-apply-summary">
+      <div className="last-apply-header" onClick={() => setExpanded((v) => !v)}>
+        <span className="last-apply-icon">✓</span>
+        <span className="last-apply-title">
+          Applied {filesModified.length} file{filesModified.length !== 1 ? 's' : ''}
+        </span>
+        <span className="last-apply-chevron">{expanded ? '▲' : '▼'}</span>
+      </div>
+
+      {expanded && diffs && (
+        <div className="last-apply-files">
+          {diffs.map((d) => {
+            const oldLines = d.oldCode.split('\n');
+            const newLines = d.newCode.split('\n');
+            const adds = newLines.filter((l) => !oldLines.includes(l)).length;
+            const removes = oldLines.filter((l) => !newLines.includes(l)).length;
+            return (
+              <div key={d.filePath} className="last-apply-file-row">
+                <span className="last-apply-file-path">{d.filePath}</span>
+                <span className="diff-badge diff-badge--add">+{adds}</span>
+                <span className="diff-badge diff-badge--remove">-{removes}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="last-apply-actions">
+        <button
+          className="btn btn-secondary"
+          onClick={onUndo}
+          disabled={undoLoading}
+        >
+          {undoLoading ? 'Undoing…' : '↩ Undo last apply'}
+        </button>
+      </div>
+
+      {undoStatus && <p className="status-msg">{undoStatus}</p>}
+      {undoError && (
+        <div className="error-banner">
+          <span className="error-icon">⚠</span>
+          <span>{undoError}</span>
+        </div>
       )}
     </div>
   );

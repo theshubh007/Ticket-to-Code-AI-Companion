@@ -36,7 +36,7 @@
   border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #333);
 }
 
-.diff-file--rejected {
+.diff-file--skipped {
   opacity: 0.45;
 }
 
@@ -93,43 +93,96 @@
   background: rgba(241, 76, 76, 0.12);
 }
 
-.diff-hunk {
+.diff-hunk-list {
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11px;
   line-height: 1.5;
   overflow-x: auto;
 }
 
+.diff-context-block {
+  border-top: 1px solid var(--vscode-sideBarSectionHeader-border, #333);
+}
+
+.diff-hunk-block {
+  border-top: 1px solid var(--vscode-sideBarSectionHeader-border, #333);
+}
+
+.diff-hunk-block--rejected {
+  opacity: 0.4;
+}
+
+.diff-hunk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 14px;
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(100,100,100,0.1));
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.diff-hunk-label {
+  font-family: var(--vscode-font-family, sans-serif);
+}
+
 .diff-line {
   display: flex;
-  gap: 6px;
-  padding: 0 14px;
+  align-items: baseline;
   white-space: pre;
 }
 
 .diff-line--add {
-  background: rgba(115, 201, 145, 0.1);
+  background: var(--vscode-diffEditor-insertedTextBackground, rgba(115, 201, 145, 0.15));
   color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
 }
 
 .diff-line--remove {
-  background: rgba(241, 76, 76, 0.1);
+  background: var(--vscode-diffEditor-removedTextBackground, rgba(241, 76, 76, 0.15));
   color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
 }
 
 .diff-line--context {
   color: var(--vscode-foreground);
-  opacity: 0.7;
+  opacity: 0.65;
+}
+
+.diff-ln {
+  display: inline-block;
+  min-width: 32px;
+  padding: 0 4px;
+  text-align: right;
+  color: var(--vscode-editorLineNumber-foreground, #555);
+  font-size: 10px;
+  user-select: none;
+  border-right: 1px solid var(--vscode-sideBarSectionHeader-border, #333);
+  flex-shrink: 0;
+}
+
+.diff-ln--old {
+  background: rgba(0,0,0,0.08);
+}
+
+.diff-ln--new {
+  background: rgba(0,0,0,0.04);
+  margin-right: 6px;
 }
 
 .diff-line-prefix {
   color: inherit;
   flex-shrink: 0;
-  width: 10px;
+  width: 12px;
+  text-align: center;
 }
 
 .diff-line-content {
   flex: 1;
+  padding-right: 8px;
+}
+
+.diff-badge--hunk {
+  color: var(--vscode-descriptionForeground);
+  background: rgba(150,150,150,0.12);
 }
 
 .btn-sm {

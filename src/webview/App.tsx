@@ -43,6 +43,12 @@ export type AppState = {
   implementResult: { filesModified: string[] } | null;
   implementError: string | null;
   pendingDiffs: FileDiff[] | null;
+  lastAppliedDiffs: FileDiff[] | null;
+
+  undoLoading: boolean;
+  undoStatus: string | null;
+  undoError: string | null;
+  conflictWarning: string[] | null;
 
   modelList: ModelSummary[] | null;
   modelListLoading: boolean;
@@ -74,6 +80,12 @@ const initialState: AppState = {
   implementResult: null,
   implementError: null,
   pendingDiffs: null,
+  lastAppliedDiffs: null,
+
+  undoLoading: false,
+  undoStatus: null,
+  undoError: null,
+  conflictWarning: null,
 
   modelList: null,
   modelListLoading: false,
@@ -218,11 +230,13 @@ export function App() {
           break;
 
         case 'implementResult':
-          updateState({
+          setState((prev) => ({
+            ...prev,
             implementResult: payload as { filesModified: string[] },
             implementLoading: false,
+            lastAppliedDiffs: prev.pendingDiffs,
             pendingDiffs: null,
-          });
+          }));
           break;
 
         case 'implementError':
@@ -230,6 +244,24 @@ export function App() {
             implementError: payload as string,
             implementLoading: false,
           });
+          break;
+
+        case 'undoResult':
+          updateState({
+            undoStatus: `Restored ${(payload as { filesRestored: string[] }).filesRestored.length} file(s)`,
+            undoLoading: false,
+            undoError: null,
+            implementResult: null,
+            lastAppliedDiffs: null,
+          });
+          break;
+
+        case 'undoError':
+          updateState({ undoError: payload as string, undoLoading: false });
+          break;
+
+        case 'conflictWarning':
+          updateState({ conflictWarning: (payload as { conflictingPaths: string[] }).conflictingPaths });
           break;
 
         case 'modelList':
@@ -303,34 +335,18 @@ export function App() {
     postMessage('implement');
   }
 
-  function handleAcceptDiff(index: number) {
-    if (!state.pendingDiffs) return;
-    const updated = state.pendingDiffs.filter((_, i) => i !== index);
-    if (updated.length === 0) {
-      postMessage('applyDiffs', { diffs: state.pendingDiffs });
-    } else {
-      updateState({ pendingDiffs: updated });
-    }
-  }
-
-  function handleRejectDiff(index: number) {
-    if (!state.pendingDiffs) return;
-    const updated = state.pendingDiffs.filter((_, i) => i !== index);
-    if (updated.length === 0) {
-      updateState({ pendingDiffs: null });
-    } else {
-      updateState({ pendingDiffs: updated });
-    }
-  }
-
-  function handleAcceptAll() {
-    if (!state.pendingDiffs) return;
-    postMessage('applyDiffs', { diffs: state.pendingDiffs });
+  function handleApplyDiffs(processedDiffs: { filePath: string; newCode: string }[]) {
+    postMessage('applyDiffs', { diffs: processedDiffs });
     updateState({ pendingDiffs: null });
   }
 
   function handleCancelDiff() {
     updateState({ pendingDiffs: null });
+  }
+
+  function handleUndo() {
+    updateState({ undoLoading: true, undoError: null, undoStatus: null, conflictWarning: null });
+    postMessage('undoApply');
   }
 
   function handleOpenFile(filePath: string, startLine: number, endLine: number) {
@@ -354,7 +370,7 @@ export function App() {
       <div className="app">
         <DiffViewer
           diffs={state.pendingDiffs}
-          onAcceptAll={handleAcceptAll}
+          onApply={handleApplyDiffs}
           onCancel={handleCancelDiff}
         />
       </div>
@@ -410,6 +426,12 @@ export function App() {
         implementResult={state.implementResult}
         implementError={state.implementError}
         onImplement={handleImplement}
+        lastAppliedDiffs={state.lastAppliedDiffs}
+        undoLoading={state.undoLoading}
+        undoStatus={state.undoStatus}
+        undoError={state.undoError}
+        conflictWarning={state.conflictWarning}
+        onUndo={handleUndo}
       />
     </div>
   );

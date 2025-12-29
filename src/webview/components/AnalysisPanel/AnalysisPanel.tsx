@@ -97,15 +97,27 @@ export function AnalysisPanel({
               <div
                 key={i}
                 className="snippet-card"
-                onClick={() => onOpenFile(chunk.filePath, chunk.startLine, chunk.endLine)}
+                onClick={() => setExpandedIndex(isExpanded ? null : i)}
               >
                 <div className="snippet-card-header">
                   <span className="snippet-path">{chunk.filePath}</span>
-                  {chunk.score !== undefined && (
-                    <span className="snippet-score">
-                      {(chunk.score * 100).toFixed(1)}%
-                    </span>
-                  )}
+                  <div className="snippet-card-header-right">
+                    {chunk.score !== undefined && (
+                      <span className="snippet-score" title="Cosine similarity to ticket description">
+                        {(chunk.score * 100).toFixed(1)}%
+                      </span>
+                    )}
+                    <button
+                      className="btn-link snippet-open-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenFile(chunk.filePath, chunk.startLine, chunk.endLine);
+                      }}
+                      title="Open in editor"
+                    >
+                      ↗ Open
+                    </button>
+                  </div>
                 </div>
 
                 <p className="snippet-lines">
@@ -114,21 +126,15 @@ export function AnalysisPanel({
 
                 <pre className="snippet-preview">{previewLines}</pre>
 
-                <button
-                  className="btn-link"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedIndex(isExpanded ? null : i);
-                  }}
-                >
-                  {isExpanded ? 'Hide preview' : 'Full preview'}
-                </button>
-
                 {isExpanded && (
                   <pre className="snippet-preview snippet-preview--expanded">
                     {chunk.content}
                   </pre>
                 )}
+
+                <span className="snippet-expand-hint">
+                  {isExpanded ? 'Click to collapse ▲' : 'Click to expand ▼'}
+                </span>
               </div>
             );
           })}
