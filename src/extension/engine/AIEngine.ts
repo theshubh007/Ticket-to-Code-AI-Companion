@@ -179,7 +179,12 @@ Apply the changes for this step.`;
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      throw new Error('Failed to parse LLM response as JSON for step apply.');
+      // Fallback: model included preamble/postamble prose around the JSON object
+      try {
+        parsed = JSON.parse(this._extractJsonObject(raw));
+      } catch {
+        throw new Error('Failed to parse LLM response as JSON for step apply.');
+      }
     }
 
     if (!Array.isArray(parsed.edits)) {
