@@ -65,6 +65,17 @@ const validResponse = JSON.stringify({
   ],
 });
 
+const stepEditResponse = JSON.stringify({
+  edits: [
+    {
+      filePath: 'src/auth/auth.ts',
+      startLine: 1,
+      endLine: 1,
+      replacement: 'export function authenticate(token: string) { return true; }',
+    },
+  ],
+});
+
 describe('AIEngine', () => {
   let engine: AIEngine;
   let mockOpenAI: jest.Mocked<OpenAIClient>;
@@ -134,5 +145,37 @@ describe('AIEngine', () => {
     await expect(engine.generateGuide(mockTicket, mockChunks)).rejects.toThrow(
       'missing required "steps" array'
     );
+  });
+
+  it('applyStep only includes referenced file snippets in the prompt', async () => {
+    mockOpenAI.chat = jest.fn().mockResolvedValue(stepEditResponse);
+
+    const step = {
+      stepNumber: 1,
+      title: 'Set up JWT authentication',
+      explanation: 'Implement the core JWT logic in auth.ts',
+      fileReferences: [
+        {
+          filePath: 'src/auth/auth.ts',
+          startLine: 1,
+          endLine: 1,
+          description: 'Core auth function to modify',
+        },
+      ],
+    };
+
+    const fileContents = new Map<string, string>([
+      ['src/auth/auth.ts', 'export function authenticate(token: string) {}\nconsole.log(token);'],
+      ['src/middleware/guard.ts', 'export function authGuard(req, res, next) {}'],
+    ]);
+
+    await engine.applyStep(mockTicket, step as never, fileContents);
+
+    const chatArgs = mockOpenAI.chat.mock.calls[0][0];
+    const userMessage = chatArgs[1].content as string;
+
+    expect(userMessage).toContain('src/auth/auth.ts');
+    expect(userMessage).toContain('1: export function authenticate(token: string) {}');
+    expect(userMessage).not.toContain('src/middleware/guard.ts');
   });
 });

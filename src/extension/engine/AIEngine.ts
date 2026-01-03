@@ -136,16 +136,11 @@ Generate a step-by-step implementation guide as JSON.`;
     step: ImplementationStep,
     fileContents: Map<string, string>
   ): Promise<FileEdit[]> {
-    const fileSection = Array.from(fileContents.entries())
-      .map(([fp, content]) => {
-        const lines = content.split('\n');
-        const width = String(lines.length).length;
-        const numbered = lines
-          .map((l, i) => `${String(i + 1).padStart(width, ' ')}: ${l}`)
-          .join('\n');
-        return `--- ${fp} ---\n${numbered}`;
-      })
-      .join('\n\n');
+    const referencedFiles = this._buildReferencedFileSection(step, fileContents);
+    const fileSection =
+      referencedFiles.length > 0
+        ? referencedFiles.join('\n\n')
+        : '(No referenced file snippets available.)';
 
     const userMessage = `Ticket: ${ticket.key} — ${ticket.summary}${
       ticket.acceptanceCriteria ? `\nAcceptance Criteria:\n${ticket.acceptanceCriteria}` : ''
@@ -198,6 +193,76 @@ Apply the changes for this step.`;
       endLine: Number(e.endLine ?? 0),
       replacement: e.replacement ?? '',
     }));
+  }
+
+  private _buildReferencedFileSection(
+    step: ImplementationStep,
+    fileContents: Map<string, string>
+  ): string[] {
+    const uniqueRefs = new Map<string, { startLine: number; endLine: number }[]>();
+
+    for (const ref of step.fileReferences) {
+      const ranges = uniqueRefs.get(ref.filePath) ?? [];
+      ranges.push({ startLine: Number(ref.startLine ?? 0), endLine: Number(ref.endLine ?? 0) });
+      uniqueRefs.set(ref.filePath, ranges);
+    }
+
+    const sections: string[] = [];
+
+    for (const [filePath, ranges] of uniqueRefs.entries()) {
+      const content = fileContents.get(filePath);
+      if (content == null) {
+        continue;
+      }
+
+      const lines = content.split('\n');
+      const snippets = ranges
+        .map((range) => {
+          const snippet = this._extractSnippet(lines, range.startLine, range.endLine);
+          if (!snippet) {
+            return null;
+          }
+
+          return [`--- ${filePath} (${range.startLine}–${range.endLine}) ---`, snippet].join('\n');
+        })
+        .filter((snippet): snippet is string => snippet !== null);
+
+      if (snippets.length > 0) {
+        sections.push(snippets.join('\n\n'));
+      }
+    }
+
+    return sections;
+  }
+
+  private _extractSnippet(lines: string[], startLine: number, endLine: number): string {
+    if (!Number.isFinite(startLine) || !Number.isFinite(endLine)) {
+      return '';
+    }
+
+    if (startLine <= 0 || endLine <= 0 || endLine < startLine) {
+      return this._formatNumberedLines(lines);
+    }
+
+    const startIndex = Math.max(0, startLine - 1);
+    const endIndex = Math.min(lines.length, endLine);
+    const selected = lines.slice(startIndex, endIndex);
+
+    if (selected.length === 0) {
+      return '';
+    }
+
+    const width = String(endIndex).length;
+    return selected
+      .map((line, index) => `${String(startIndex + index + 1).padStart(width, ' ')}: ${line}`)
+      .join('\n');
+  }
+
+  private _formatNumberedLines(lines: string[]): string {
+    const width = String(lines.length).length;
+    return lines
+      .map((line, index) => `${String(index + 1).padStart(width, ' ')}: ${line}`)
+      .join('\n');
   }
 
   private _cleanJson(raw: string): string {
