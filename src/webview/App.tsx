@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { postMessage } from './vscodeApi';
+import { postMessage, getState as vsGetState, setState as vsSetState } from './vscodeApi';
 import { TicketData, TicketSummary, CodeChunk, ImplementationGuide } from './types';
 import { TicketPanel } from './components/TicketPanel/TicketPanel';
 import { AnalysisPanel } from './components/AnalysisPanel/AnalysisPanel';
@@ -22,6 +22,11 @@ export type AppState = {
   guide: ImplementationGuide | null;
   guideError: string | null;
   guideLoading: boolean;
+
+  implementLoading: boolean;
+  implementLog: string[];
+  implementResult: { filesModified: string[] } | null;
+  implementError: string | null;
 };
 
 const initialState: AppState = {
@@ -38,15 +43,45 @@ const initialState: AppState = {
   guide: null,
   guideError: null,
   guideLoading: false,
+
+  implementLoading: false,
+  implementLog: [],
+  implementResult: null,
+  implementError: null,
 };
 
 export function App() {
-  const [state, setState] = useState<AppState>(initialState);
+  const [state, setState] = useState<AppState>(() => {
+    const saved = vsGetState<AppState>();
+    if (!saved) return initialState;
+    return {
+      ...saved,
+      ticketListLoading: false,
+      ticketListError: null,
+      ticketLoading: false,
+      ticketError: null,
+      analysisLoading: false,
+      analysisError: null,
+      indexingProgress: null,
+      guideLoading: false,
+      guideError: null,
+      implementLoading: false,
+      implementError: null,
+      chunks: null,
+      implementLog: [],
+      implementResult: null,
+    };
+  });
   const [ticketSearch, setTicketSearch] = useState('');
 
   const updateState = useCallback((partial: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...partial }));
   }, []);
+
+  // Persist state so it survives tab switches and extension host restarts
+  useEffect(() => {
+    vsSetState(state);
+  }, [state]);
 
   // Fetch assigned tickets automatically when the panel first opens
   useEffect(() => {
@@ -128,6 +163,35 @@ export function App() {
             guideLoading: false,
           });
           break;
+
+        case 'implementProgress': {
+          const p = payload as { step: number; total: number; stepTitle: string; phase: string; filePath?: string };
+          const lines: string[] = [];
+          if (p.phase === 'reading') {
+            lines.push(`▸ Step ${p.step} / ${p.total}  ${p.stepTitle}`);
+            lines.push('  Reading files…');
+          } else if (p.phase === 'generating') {
+            lines.push('  Generating patch…');
+          } else if (p.phase === 'writing' && p.filePath) {
+            lines.push(`  ✓ ${p.filePath}`);
+          }
+          setState((prev) => ({ ...prev, implementLog: [...prev.implementLog, ...lines] }));
+          break;
+        }
+
+        case 'implementResult':
+          updateState({
+            implementResult: payload as { filesModified: string[] },
+            implementLoading: false,
+          });
+          break;
+
+        case 'implementError':
+          updateState({
+            implementError: payload as string,
+            implementLoading: false,
+          });
+          break;
       }
     };
 
@@ -168,6 +232,16 @@ export function App() {
   function handleGenerateGuide() {
     updateState({ guideLoading: true, guideError: null, guide: null });
     postMessage('generateGuide');
+  }
+
+  function handleImplement() {
+    updateState({
+      implementLoading: true,
+      implementError: null,
+      implementLog: [],
+      implementResult: null,
+    });
+    postMessage('implement');
   }
 
   function handleOpenFile(filePath: string, startLine: number, endLine: number) {
@@ -218,6 +292,11 @@ export function App() {
         disabled={!state.chunks}
         onGenerate={handleGenerateGuide}
         onOpenFile={handleOpenFile}
+        implementLoading={state.implementLoading}
+        implementLog={state.implementLog}
+        implementResult={state.implementResult}
+        implementError={state.implementError}
+        onImplement={handleImplement}
       />
     </div>
   );

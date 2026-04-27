@@ -7,6 +7,39 @@ import {
   FileReference,
 } from '../types';
 
+export interface FileEdit {
+  filePath: string;
+  startLine: number;  // 1-based, inclusive; 0 = append to end of file
+  endLine: number;    // 1-based, inclusive
+  replacement: string;
+}
+
+const APPLY_SYSTEM_PROMPT = `You are a senior software engineer applying a specific code change to a file.
+File contents are shown with line numbers in the format "  N: code".
+
+You MUST respond with valid JSON only. No prose, no markdown fences, just raw JSON.
+
+The JSON must match this exact shape:
+{
+  "edits": [
+    {
+      "filePath": "relative/path/to/file.ts",
+      "startLine": 45,
+      "endLine": 52,
+      "replacement": "...new code that replaces lines 45 through 52..."
+    }
+  ]
+}
+
+Rules:
+- startLine and endLine are the 1-based line numbers shown in the file listing (the numbers before the colon)
+- replacement is the complete new code that replaces the range startLine..endLine inclusive — do NOT include line number prefixes in replacement
+- To append entirely new code at the end of the file, set both startLine and endLine to 0
+- One edit object per contiguous change range; use multiple edit objects for non-contiguous changes in the same file
+- Only include files that actually need changes for this step
+- File paths must exactly match the paths provided in the input
+- Make minimal changes — only touch the lines this step requires`;
+
 const SYSTEM_PROMPT = `You are a senior software engineer helping a developer implement a Jira ticket.
 You will be given a ticket description and relevant code snippets from the repository.
 Your job is to produce a structured, actionable implementation guide grounded in the actual codebase.
@@ -92,6 +125,74 @@ Generate a step-by-step implementation guide as JSON.`;
 
     const parsed = this._parseGuide(raw, ticket.key);
     return parsed;
+  }
+
+  async applyStep(
+    ticket: TicketData,
+    step: ImplementationStep,
+    fileContents: Map<string, string>
+  ): Promise<FileEdit[]> {
+    const fileSection = Array.from(fileContents.entries())
+      .map(([fp, content]) => {
+        const lines = content.split('\n');
+        const width = String(lines.length).length;
+        const numbered = lines
+          .map((l, i) => `${String(i + 1).padStart(width, ' ')}: ${l}`)
+          .join('\n');
+        return `--- ${fp} ---\n${numbered}`;
+      })
+      .join('\n\n');
+
+    const userMessage = `Ticket: ${ticket.key} — ${ticket.summary}${
+      ticket.acceptanceCriteria ? `\nAcceptance Criteria:\n${ticket.acceptanceCriteria}` : ''
+    }
+
+Step ${step.stepNumber}: ${step.title}
+${step.explanation}
+
+Current file contents:
+
+${fileSection}
+
+Apply the changes for this step.`;
+
+    let raw: string;
+    try {
+      raw = await this.openAI.chat(
+        [
+          { role: 'system', content: APPLY_SYSTEM_PROMPT },
+          { role: 'user', content: userMessage },
+        ],
+        'json',
+        120000
+      );
+    } catch (err) {
+      throw new Error(`LLM call failed: ${(err as Error).message}`);
+    }
+
+    const cleaned = raw
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+
+    let parsed: { edits: { filePath: string; startLine: number; endLine: number; replacement: string }[] };
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      throw new Error('Failed to parse LLM response as JSON for step apply.');
+    }
+
+    if (!Array.isArray(parsed.edits)) {
+      throw new Error('LLM response missing required "edits" array.');
+    }
+
+    return parsed.edits.map((e) => ({
+      filePath: e.filePath ?? '',
+      startLine: Number(e.startLine ?? 0),
+      endLine: Number(e.endLine ?? 0),
+      replacement: e.replacement ?? '',
+    }));
   }
 
   private _parseGuide(raw: string, ticketKey: string): ImplementationGuide {
