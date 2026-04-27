@@ -56,6 +56,7 @@ export function App() {
     if (!saved) return initialState;
     return {
       ...saved,
+      // Reset all transient loading / error / progress state
       ticketListLoading: false,
       ticketListError: null,
       ticketLoading: false,
@@ -67,12 +68,15 @@ export function App() {
       guideError: null,
       implementLoading: false,
       implementError: null,
+      // Clear session-only data — chunks hold embedding vectors that are no
+      // longer in the extension host after a reload, and implement history is
+      // stale. ticket + ticketList + guide are restored because the host also
+      // rehydrates _lastTicket and _lastGuide from workspaceState.
       chunks: null,
       implementLog: [],
       implementResult: null,
     };
   });
-  const [ticketSearch, setTicketSearch] = useState('');
 
   const updateState = useCallback((partial: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...partial }));
@@ -204,10 +208,6 @@ export function App() {
     postMessage('listTickets');
   }
 
-  function handleTicketSearchChange(value: string) {
-    setTicketSearch(value);
-  }
-
   function handleFetchTicket(key: string) {
     updateState({ ticketLoading: true, ticketError: null, ticket: null });
     postMessage('fetchTicket', { key });
@@ -248,30 +248,15 @@ export function App() {
     postMessage('openFile', { filePath, startLine, endLine });
   }
 
-  const normalizedSearch = ticketSearch.trim().toLowerCase();
-  const filteredTicketList = (state.ticketList ?? []).filter((ticket) => {
-    if (!normalizedSearch) {
-      return true;
-    }
-
-    return (
-      ticket.key.toLowerCase().includes(normalizedSearch) ||
-      ticket.summary.toLowerCase().includes(normalizedSearch)
-    );
-  });
-
   return (
     <div className="app">
       <TicketPanel
-        ticketList={filteredTicketList}
-        totalTicketCount={state.ticketList?.length ?? 0}
-        ticketSearch={ticketSearch}
+        ticketList={state.ticketList}
         ticketListLoading={state.ticketListLoading}
         ticketListError={state.ticketListError}
         ticket={state.ticket}
         error={state.ticketError}
         loading={state.ticketLoading}
-        onTicketSearchChange={handleTicketSearchChange}
         onFetch={handleFetchTicket}
         onClearTicket={handleClearTicket}
         onRetryList={handleRetryList}

@@ -5,14 +5,11 @@ import { ErrorBanner } from '../shared/ErrorBanner';
 
 interface Props {
   ticketList: TicketSummary[] | null;
-  totalTicketCount: number;
-  ticketSearch: string;
   ticketListLoading: boolean;
   ticketListError: string | null;
   ticket: TicketData | null;
   error: string | null;
   loading: boolean;
-  onTicketSearchChange: (value: string) => void;
   onFetch: (key: string) => void;
   onClearTicket: () => void;
   onRetryList: () => void;
@@ -20,28 +17,17 @@ interface Props {
 
 export function TicketPanel({
   ticketList,
-  totalTicketCount,
-  ticketSearch,
   ticketListLoading,
   ticketListError,
   ticket,
   error,
   loading,
-  onTicketSearchChange,
   onFetch,
   onClearTicket,
   onRetryList,
 }: Props) {
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [expanded, setExpanded] = useState(false);
-  const trimmedSearch = ticketSearch.trim();
-  const visibleTicketCount = ticketList?.length ?? 0;
-  const hasActiveFilter = trimmedSearch.length > 0;
-
-  let ticketCountLabel = `${totalTicketCount} ${totalTicketCount === 1 ? 'ticket' : 'tickets'}`;
-  if (hasActiveFilter && totalTicketCount !== visibleTicketCount) {
-    ticketCountLabel = `${visibleTicketCount} of ${totalTicketCount} tickets`;
-  }
 
   useEffect(() => {
     if (ticket && !loading) {
@@ -60,29 +46,6 @@ export function TicketPanel({
       <div className="panel-header">
         <span className="panel-number">①</span>
         <h2 className="panel-title">Jira Ticket</h2>
-        {view === 'list' && !ticketListLoading && !ticketListError && ticketList !== null && (
-          <span className="panel-count-badge">{ticketCountLabel}</span>
-        )}
-        {view === 'list' && (
-          <button
-            className="icon-btn"
-            onClick={onRetryList}
-            disabled={ticketListLoading}
-            aria-label="Refresh assigned tickets"
-            title="Refresh assigned tickets"
-          >
-            <svg
-              className={`icon-refresh ${ticketListLoading ? 'spinning' : ''}`}
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                d="M12 4a8 8 0 0 1 7.75 6h-2.2A6 6 0 1 0 18 13h2a8 8 0 1 1-2.4-5.7L15 10h7V3l-2.78 2.78A9.92 9.92 0 0 0 12 2a10 10 0 1 0 10 10h-2A8 8 0 0 1 12 4Z"
-                fill="currentColor"
-              />
-            </svg>
-          </button>
-        )}
         {ticket && view === 'detail' && (
           <span className="panel-badge success">Fetched</span>
         )}
@@ -90,17 +53,6 @@ export function TicketPanel({
 
       {view === 'list' && (
         <>
-          {!ticketListLoading && !ticketListError && ticketList !== null && totalTicketCount > 0 && (
-            <input
-              className="text-input ticket-search-input"
-              type="text"
-              value={ticketSearch}
-              onChange={(event) => onTicketSearchChange(event.target.value)}
-              placeholder="Search by key or summary"
-              aria-label="Filter assigned tickets"
-            />
-          )}
-
           {ticketListLoading && (
             <Spinner label="Loading your tickets…" />
           )}
@@ -115,10 +67,8 @@ export function TicketPanel({
           )}
 
           {!ticketListLoading && !ticketListError && ticketList !== null && (
-            totalTicketCount === 0 ? (
+            ticketList.length === 0 ? (
               <p className="hint">No tickets currently assigned to you.</p>
-            ) : ticketList.length === 0 ? (
-              <p className="hint">No tickets match your search.</p>
             ) : (
               <ul className="ticket-list">
                 {ticketList.map((t) => (

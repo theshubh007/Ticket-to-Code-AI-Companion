@@ -55,47 +55,6 @@ body {
   flex: 1;
 }
 
-.panel-count-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  white-space: nowrap;
-}
-
-.icon-btn {
-  border: 1px solid var(--vscode-widget-border, #444);
-  background: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.04));
-  color: var(--vscode-foreground);
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
-}
-
-.icon-btn:hover:not(:disabled) {
-  border-color: var(--vscode-focusBorder);
-}
-
-.icon-btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.icon-refresh {
-  width: 13px;
-  height: 13px;
-}
-
-.icon-refresh.spinning {
-  animation: spin 0.8s linear infinite;
-}
-
 .panel-badge {
   font-size: 10px;
   padding: 1px 6px;
@@ -133,10 +92,6 @@ body {
 
 .text-input:disabled {
   opacity: 0.5;
-}
-
-.ticket-search-input {
-  margin-bottom: 2px;
 }
 
 /* ─── Buttons ────────────────────────────────────────────────────── */
@@ -216,11 +171,6 @@ body {
 @keyframes blink {
   0%, 80%, 100% { opacity: 0.2; }
   40% { opacity: 1; }
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 /* ─── Error Banner ───────────────────────────────────────────────── */
