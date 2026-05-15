@@ -1,4 +1,3 @@
-```markdown
 <div align="center">
 
 # 🎫 Ticket to Code — AI Companion
@@ -194,5 +193,3 @@ Built with ❤️ to make developers' lives easier.
 ```
 
 ---
-
-One heads-up: there are nested code fences (` ``` `) inside the block above. When you paste into GitHub's editor, it'll render correctly — but if you're copying from here, make sure the outer triple backticks don't get included. The content starts at `<div align="center">` and ends at `</div>`.
