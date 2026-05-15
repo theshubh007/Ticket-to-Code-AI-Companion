@@ -191,5 +191,3 @@ Built with ❤️ to make developers' lives easier.
 
 </div>
 ```
-
----
