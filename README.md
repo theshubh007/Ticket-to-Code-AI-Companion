@@ -190,4 +190,3 @@ Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
 Built with ❤️ to make developers' lives easier.
 
 </div>
-```
