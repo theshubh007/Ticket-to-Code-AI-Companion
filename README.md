@@ -138,6 +138,8 @@ Open the gear button in the sidebar to configure AI settings:
 
 ## Architecture
 
+![Ticket to Code architecture diagram](media/Architecture%20Ticket%20to%20code%20orchestrator.jpeg)
+
 ```text
 VS Code Activity Bar
         |
