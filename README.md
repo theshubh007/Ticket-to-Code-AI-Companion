@@ -51,6 +51,10 @@ hunks, apply the accepted changes, and undo the last apply.
 - **Incremental cache** - Persists the embedding index as JSON in VS Code global
   storage and reuses unchanged file chunks based on modification time.
 
+## Demo Video
+
+[Watch the Ticket to Code Orchestrator demo](media/Ticket_to_Code_Orchestrator.mp4)
+
 ## Screenshots
 
 ### Jira Ticket And Repository Analysis
