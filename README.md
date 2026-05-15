@@ -1,192 +1,280 @@
 <div align="center">
 
-# 🎫 Ticket to Code — AI Companion
+# Ticket to Code Orchestrator
 
-**Turn Jira tickets into implementation guides without leaving VS Code.**
+**Turn assigned Jira tickets into code-aware implementation guides and reviewable edits without leaving VS Code.**
 
-[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white)](https://code.visualstudio.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-85%25-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![OpenAI](https://img.shields.io/badge/Powered%20by-OpenAI-412991?style=flat-square&logo=openai&logoColor=white)](https://openai.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+![VS Code 1.85+](https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/yugm-patel-1312.ticket-to-code-ai-companion?style=flat-square&label=Marketplace&logo=visualstudiocode&logoColor=white&color=007ACC)](https://marketplace.visualstudio.com/items?itemName=yugm-patel-1312.ticket-to-code-ai-companion)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=111111)
+![OpenRouter](https://img.shields.io/badge/AI-OpenRouter-111827?style=flat-square)
 
 </div>
 
 ---
 
-## What is Ticket to Code?
+## What Is Ticket To Code Orchestrator?
 
-Ticket to Code is a VS Code extension that eliminates the constant context-switching between your Jira board and your IDE. Paste a ticket key, and the extension fetches the issue, semantically searches your codebase for the most relevant files, and generates a tailored, step-by-step implementation guide — all grounded in *your actual code*, not generic advice.
+Ticket to Code Orchestrator is a VS Code extension that connects your Jira
+tickets, local repository, and AI model into one guided implementation flow.
+Open the sidebar, load your assigned Jira tickets, select one, analyze the
+current workspace, and generate a step-by-step implementation guide grounded in
+actual files from your codebase.
 
-No more copy-pasting ticket descriptions. No more guessing which files to touch. Just open the sidebar, enter a ticket, and start coding.
-
----
+The extension can also ask the selected model to draft file edits for the guide,
+show those edits in a review screen, let you skip files or reject individual
+hunks, apply the accepted changes, and undo the last apply.
 
 ## Features
 
-- **🔗 Jira Integration** — Fetch any issue by key (e.g. `PROJ-123`) and instantly pull its summary, description, and acceptance criteria directly into VS Code.
+- **Assigned Jira ticket list** - Loads up to 50 issues assigned to the current
+  Jira user with status, priority, issue type, key, and summary.
+- **Ticket detail fetch** - Retrieves summary, description, labels, status,
+  priority, issue type, and common acceptance-criteria custom fields.
+- **Semantic code search** - Indexes supported repository files, chunks source
+  code, embeds chunks with `openai/text-embedding-3-large`, and ranks snippets
+  with cosine similarity.
+- **OpenRouter model settings** - Stores an OpenRouter API key and lets you pick
+  a chat model from pinned defaults or the OpenRouter model list.
+- **Structured implementation guides** - Produces JSON-backed guide steps with
+  file references, line ranges, and implementation rationale.
+- **Editor navigation** - Opens retrieved snippets and guide file references
+  directly in the VS Code editor.
+- **Reviewable AI edits** - Generates proposed file changes, shows a per-file
+  diff, supports skipping files and rejecting hunks, then applies only the
+  accepted result.
+- **Undo last apply** - Keeps a pre-apply snapshot so the most recent apply can
+  be restored from the sidebar.
+- **Secure credential storage** - Stores Jira credentials, OpenRouter API key,
+  and model preference with VS Code `SecretStorage`.
+- **Incremental cache** - Persists the embedding index as JSON in VS Code global
+  storage and reuses unchanged file chunks based on modification time.
 
-- **🧠 Semantic Code Search** — Your repository is indexed using OpenAI embeddings. When you load a ticket, the engine runs a semantic search to surface the most relevant files and functions — not just keyword matches.
+## Screenshots
 
-- **🤖 AI-Generated Implementation Guides** — GPT-4o-mini synthesizes your ticket requirements and the relevant code context into a concrete, step-by-step plan tailored to your codebase.
+### Jira Ticket And Repository Analysis
 
-- **🔒 Secure Credential Storage** — Jira tokens and OpenAI API keys are stored using VS Code's built-in `SecretStorage` — never in plaintext or committed to source control.
+![Jira ticket analysis](media/Jira%20ticket%20Analysis.png)
 
-- **⚡ Incremental Caching** — The code index is cached on disk and updated only when files change, keeping analysis fast even in large repositories.
+![Repository analysis](media/Repo%20Analysis.png)
 
----
+### Implementation Guide And Apply Flow
 
-## Demo
+![Generated implementation guide](media/Implementation%20Guide.png)
 
-> *Screencast / screenshots coming soon.*
+![Diff review](media/Diff%20View.png)
 
----
+![Applied changes](media/Applied%20Changes.png)
 
-## Getting Started
+## Current AI Defaults
 
-### Prerequisites
+| Setting | Current value |
+| --- | --- |
+| Provider | OpenRouter |
+| Default chat model | `~anthropic/claude-haiku-latest` |
+| Pinned alternate chat model | `~google/gemini-flash-latest` |
+| Embedding model | `openai/text-embedding-3-large` |
+| Embedding provider path | OpenRouter-compatible `/v1/embeddings` endpoint |
+
+The chat model is configurable from the sidebar settings panel. The embedding
+model is fixed in code so cached vectors stay compatible; if the embedding
+model changes, the extension clears and rebuilds the embedding index.
+
+## Prerequisites
 
 - VS Code `1.85+`
-- Node.js `18+`
-- A [Jira API token](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/)
-- An [OpenAI API key](https://platform.openai.com/api-keys)
+- Node.js and npm for local development
+- A Jira API token from your Atlassian account
+- An OpenRouter API key from `https://openrouter.ai/keys`
 
-### Installation
+## Install
 
-**From source (development):**
+Install from the VS Code Marketplace:
 
-```bash
-git clone https://github.com/theshubh007/Ticket-to-Code-AI-Companion.git
-cd Ticket-to-Code-AI-Companion
-npm install
-npm run dev      # starts watch mode for both extension host and webview
-```
-
-Press `F5` in VS Code to launch the **Extension Development Host**.
-
----
+https://marketplace.visualstudio.com/items?itemName=yugm-patel-1312.ticket-to-code-ai-companion
 
 ## Configuration
 
-On first launch, the extension will prompt you to enter:
+On first use, the extension prompts for Jira credentials when it tries to load
+assigned tickets:
 
 | Setting | Description |
-|---|---|
-| Jira Base URL | Your Jira instance (e.g. `https://yourorg.atlassian.net`) |
+| --- | --- |
+| Jira Base URL | Your Jira instance, for example `https://yourorg.atlassian.net` |
 | Jira Email | The email address tied to your Jira account |
-| Jira API Token | Generated from your Atlassian account settings |
-| OpenAI API Key | Your OpenAI secret key |
+| Jira API Token | A Jira API token from Atlassian account settings |
 
-All credentials are stored securely via VS Code's `SecretStorage` API.
+Open the gear button in the sidebar to configure AI settings:
 
----
+| Setting | Description |
+| --- | --- |
+| Model | OpenRouter chat model slug, defaulting to `~anthropic/claude-haiku-latest` |
+| API key | OpenRouter API key, stored securely in VS Code `SecretStorage` |
 
 ## How It Works
 
-Enter a ticket key in the sidebar and the extension handles the rest in three stages:
+```text
+1. LOAD TICKETS
+   Jira REST API returns issues assigned to the current user.
 
-```
-1. FETCH      →  Pulls the Jira issue (summary, description, acceptance criteria)
-2. ANALYZE    →  Indexes your repo with embeddings → finds the most relevant files via cosine similarity
-3. GENERATE   →  Sends ticket + code context to GPT-4o-mini → returns a step-by-step implementation guide
-```
+2. FETCH TICKET
+   The selected issue is normalized into summary, description, acceptance
+   criteria, labels, priority, status, and issue type.
 
-### Architecture
+3. ANALYZE REPO
+   The extension walks the active workspace, skips generated and dependency
+   folders, chunks supported files, embeds uncached chunks, and retrieves the
+   most relevant snippets.
 
-```
-┌──────────────────────────────────────────────────────┐
-│                     VS Code Host                      │
-│   extension.ts → SidebarProvider → Engine Modules    │
-│   TicketManager | CodeAnalyzer | AIEngine | Cache     │
-└────────────────────────┬─────────────────────────────┘
-                         │  postMessage (bidirectional)
-┌────────────────────────▼─────────────────────────────┐
-│                WebView UI  (React 18 + TS)            │
-│        TicketPanel  |  AnalysisPanel  |  GuidePanel   │
-└────────────────────────┬─────────────────────────────┘
-                         │
-┌────────────────────────▼─────────────────────────────┐
-│                   External APIs                       │
-│            Jira REST API  |  OpenAI API               │
-└──────────────────────────────────────────────────────┘
+4. GENERATE GUIDE
+   Ticket context and selected snippets are sent to the configured OpenRouter
+   chat model. The response is validated into structured guide steps.
+
+5. IMPLEMENT AND REVIEW
+   The model proposes edits for referenced files. The webview shows a diff where
+   files can be skipped and hunks can be rejected before applying changes.
 ```
 
-### Project Structure
+## Architecture
 
-```
-src/
-├── extension/           # Extension host (Node.js / VS Code API)
-│   ├── sidebar/         # WebviewViewProvider — registers the sidebar panel
-│   ├── engine/          # TicketManager, CodeAnalyzer, AIEngine, CacheManager
-│   ├── clients/         # JiraClient, OpenAIClient
-│   └── utils/           # chunker, cosine similarity, fileWalker, editorNavigation
-└── webview/             # React UI (runs in the browser sandbox)
-    ├── components/      # TicketPanel, AnalysisPanel, GuidePanel
-    ├── hooks/           # useVsCodeMessages, useExtensionState
-    └── styles/          # VS Code theme-aware CSS variables
+```text
+VS Code Activity Bar
+        |
+        v
+React Webview UI
+TicketPanel | AnalysisPanel | GuidePanel | DiffViewer | ModelPickerDialog
+        |
+        | postMessage
+        v
+Extension Host
+SidebarProvider
+        |
+        +-- Security        -> VS Code SecretStorage
+        +-- TicketManager   -> JiraClient -> Jira REST API
+        +-- CodeAnalyzer    -> file walking, chunking, embeddings, similarity
+        +-- AIEngine        -> guide generation and edit generation
+        +-- CacheManager    -> ticket cache and embedding-index JSON
+        |
+        v
+Workspace files and VS Code global storage
 ```
 
----
+The React webview is sandboxed and communicates with the extension host only
+through VS Code `postMessage`. The extension host owns file access, credential
+storage, Jira calls, OpenRouter calls, cache persistence, and editor navigation.
+
+## Repository Indexing Details
+
+- Supported files include TypeScript, JavaScript, Python, Java, C#, Go, Ruby,
+  PHP, Swift, Kotlin, Rust, C/C++, Markdown, JSON, YAML, HTML, CSS, SCSS, and
+  shell scripts.
+- The walker skips dependency, build, cache, and hidden folders such as
+  `node_modules`, `dist`, `build`, `.git`, `.vscode`, `.next`, `coverage`, and
+  `.cache`.
+- Files larger than 500 KB are skipped.
+- Files are chunked into 80-line windows with a 15-line overlap.
+- Search starts with the top 20 semantically similar chunks, deduplicates them,
+  applies a small file-type relevance boost, and keeps up to 10 snippets within
+  a 12,000-character context budget.
+
+## Commands
+
+The extension contributes these VS Code commands:
+
+| Command | Description |
+| --- | --- |
+| `Ticket to Code: Reset Credentials` | Clears Jira credentials, OpenRouter API key, and saved chat model |
+| `Ticket to Code: Clear Embedding Index` | Deletes the cached embedding index so the repository can be re-indexed |
 
 ## Tech Stack
 
 | Layer | Technology |
-|---|---|
-| Extension Host | TypeScript + esbuild |
-| WebView UI | React 18 + TypeScript + Vite |
-| Embeddings | OpenAI `text-embedding-3-small` |
-| LLM | GPT-4o-mini |
-| Vector Store | JSON on disk + cosine similarity |
-| Auth | VS Code `SecretStorage` |
+| --- | --- |
+| Extension host | TypeScript, VS Code Extension API, esbuild |
+| Webview UI | React 18, TypeScript, Vite |
+| Chat models | OpenRouter chat-completions API, default `~anthropic/claude-haiku-latest` |
+| Embeddings | `openai/text-embedding-3-large` |
+| Retrieval | JSON vector cache, cosine similarity, file-type boosting |
+| Jira integration | Jira Cloud REST API |
+| Auth storage | VS Code `SecretStorage` |
+| Testing | Jest and ts-jest |
 
----
+## Project Structure
 
-## Development
+```text
+src/
+  extension/
+    clients/       JiraClient and OpenAI-compatible API client
+    engine/        Security, TicketManager, CodeAnalyzer, AIEngine, CacheManager
+    sidebar/       VS Code WebviewViewProvider and host message handlers
+    utils/         ADF parsing, file walking, chunking, retrieval, navigation
+    __tests__/     unit tests, e2e suites, and VS Code mocks
+  webview/
+    components/    TicketPanel, AnalysisPanel, GuidePanel, DiffViewer, model picker
+    styles.css     VS Code theme-aware webview styling
+    App.tsx        webview state machine and message handling
+docs/
+  architecture.md  architecture decision records
+media/
+  icon.svg         activity bar icon
+```
+
+## Local Development
+
+Install dependencies:
 
 ```bash
-# Install dependencies
 npm install
+```
 
-# Watch mode — rebuilds extension + webview on save
+Run extension and webview watch builds:
+
+```bash
 npm run dev
+```
 
-# Run tests
+Build everything:
+
+```bash
+npm run build
+```
+
+Run unit tests:
+
+```bash
 npm test
 ```
 
-Press `F5` to open a new VS Code window with the extension loaded.
+Run coverage:
 
----
+```bash
+npm run test:coverage
+```
+
+Prepare a production extension bundle:
+
+```bash
+npm run vscode:prepublish
+```
+
+To launch the extension in development, press `F5` in VS Code and use the
+`Run Extension` launch configuration. The pre-launch task builds both the
+extension host bundle and the webview bundle.
+
+## Current Limitations
+
+- The sidebar currently focuses on the current user's assigned Jira tickets.
+- The embedding model is fixed to `openai/text-embedding-3-large`.
+- The vector store is a local JSON file, which keeps setup simple but is not a
+  dedicated vector database.
+- If files change between diff generation and apply, the extension warns about
+  conflicts and still applies the accepted diff, so review the result carefully.
 
 ## Roadmap
 
-- [ ] VS Code Marketplace listing
-- [ ] Support for GitHub Issues and Linear
-- [ ] Local embedding models (no OpenAI dependency)
-- [ ] In-editor code navigation from guide steps
-- [ ] Multi-ticket batch analysis
-
----
-
-## Contributing
-
-Contributions are welcome! Please open an issue to discuss what you'd like to change before submitting a pull request.
-
-1. Fork the repository
-2. Create your feature branch: `git checkout -b feature/my-feature`
-3. Commit your changes: `git commit -m 'Add my feature'`
-4. Push to the branch: `git push origin feature/my-feature`
-5. Open a pull request
-
----
-
-## License
-
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
-
----
-
-<div align="center">
-
-Built with ❤️ to make developers' lives easier.
-
-</div>
+- Manual ticket-key entry in addition to assigned-ticket browsing
+- GitHub Issues and Linear support
+- Local embedding model option
+- More scalable vector storage for very large repositories
+- Richer apply safeguards and merge-aware conflict handling
