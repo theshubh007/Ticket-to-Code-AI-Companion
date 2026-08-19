@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "sourceMap": true,
+    "rootDir": "src/extension",
+    "outDir": "dist/extension",
+    "types": ["node", "mocha", "vscode"]
+  },
+  "include": ["src/extension/__tests__/e2e/**/*"]
+}

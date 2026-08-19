@@ -5,8 +5,9 @@
     "module": "commonjs",
     "lib": ["ES2020"],
     "sourceMap": true,
-    "rootDir": "src/extension"
+    "rootDir": "src/extension",
+    "types": ["node", "jest", "vscode"]
   },
   "include": ["src/extension/**/*"],
-  "exclude": ["src/webview", "node_modules"]
+  "exclude": ["src/webview", "src/extension/__tests__/e2e", "node_modules"]
 }

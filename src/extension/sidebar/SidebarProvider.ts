@@ -49,7 +49,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.options = {
       enableScripts: true,
-      retainContextWhenHidden: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview'),
       ],
