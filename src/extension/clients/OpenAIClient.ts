@@ -18,6 +18,32 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, { type: 'string' }>;
+      required: string[];
+      additionalProperties: false;
+    };
+  };
+}
+
+export interface AssistantTurn {
+  role: 'assistant';
+  content: string | null;
+  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+}
+
+export type AgentMessage = ChatMessage | AssistantTurn | {
+  role: 'tool';
+  tool_call_id: string;
+  content: string;
+};
+
 export class OpenAIClient {
   private keyResolver?: () => Promise<string>;
   private runtimeResolver?: () => Promise<RuntimeAIConfig>;
@@ -99,6 +125,21 @@ export class OpenAIClient {
     return result.choices[0].message.content;
   }
 
+  async agentTurn(messages: AgentMessage[], tools: ToolDefinition[]): Promise<AssistantTurn> {
+    const runtime = await this.resolveRuntime();
+    const response = await this._post('/v1/chat/completions', {
+      model: runtime.chatModel,
+      messages,
+      tools,
+      max_tokens: 4096,
+    }, runtime, 45000) as { choices?: { message?: AssistantTurn; finish_reason?: string }[] };
+    const choice = response.choices?.[0];
+    if (!choice?.message || choice.finish_reason === 'length') {
+      throw new Error('The model returned an incomplete response. Try a smaller ticket.');
+    }
+    return choice.message;
+  }
+
   private async _post(
     path: string,
     body: unknown,
@@ -143,6 +184,11 @@ export class OpenAIClient {
             reject(new Error(`${providerName} authentication failed. Check your API key.`));
           } else if (res.statusCode === 429) {
             reject(new Error(`${providerName} rate limit hit. Please wait and try again.`));
+          } else if (runtime.provider === 'openrouter' && res.statusCode === 404 && data.includes('No endpoints found')) {
+            const detail = path === '/v1/embeddings'
+              ? `Workspace search could not reach the embedding model ${runtime.embeddingModel}. Check its availability in OpenRouter.`
+              : `OpenRouter could not route this request for ${runtime.chatModel}. Choose another model in AI settings${'tools' in (body as object) ? ' that supports tool calling' : ''} and retry.`;
+            reject(new Error(detail));
           } else {
             reject(new Error(`${providerName} API error: HTTP ${res.statusCode} — ${data}`));
           }

@@ -5,6 +5,8 @@ import * as crypto from 'crypto';
 import { Security } from '../engine/Security';
 import { TicketManager } from '../engine/TicketManager';
 import { CodeAnalyzer } from '../engine/CodeAnalyzer';
+import { TicketPreview } from './TicketPreview';
+import { OpenAIClient } from '../clients/OpenAIClient';
 import { AIEngine } from '../engine/AIEngine';
 import {
   MessageFromWebview,
@@ -31,14 +33,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _modelListCachedAt = 0;
   private _preApplyContents: Map<string, string> = new Map();
 
+  readonly ticketPreview: TicketPreview;
+  private _ticketRequest = 0;
+
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _security: Security,
     private readonly _ticketManager: TicketManager,
     private readonly _codeAnalyzer: CodeAnalyzer,
     private readonly _aiEngine: AIEngine,
-    private readonly _workspaceState: vscode.Memento
-  ) {}
+    private readonly _workspaceState: vscode.Memento,
+    client: OpenAIClient
+  ) {
+    this.ticketPreview = new TicketPreview(client, _codeAnalyzer,
+      payload => this._post({ command: 'ticketAgent', payload }));
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -79,6 +88,28 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           case 'generateGuide':
             await this._handleGenerateGuide();
+            break;
+          case 'previewTicket':
+            if (this._lastTicket?.key === message.payload.key) {
+              await this.ticketPreview.start(this._lastTicket);
+            }
+            break;
+          case 'reviewTicketChange':
+            await this.ticketPreview.show(message.payload.id);
+            break;
+          case 'discardTicketChange':
+            this.ticketPreview.discard(message.payload.id);
+            break;
+          case 'applyTicketChange':
+            await this.ticketPreview.apply(message.payload.id);
+            break;
+          case 'clearTicket':
+            this._ticketRequest++;
+            this._lastTicket = undefined;
+            this._lastChunks = undefined;
+            this._lastGuide = undefined;
+            this.ticketPreview.reset();
+            await Promise.all(['lastTicket', 'lastChunks', 'lastGuide'].map(key => this._workspaceState.update(key, undefined)));
             break;
           case 'implement':
             await this._handleImplement();
@@ -124,6 +155,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async _handleFetchTicket(key: string): Promise<void> {
+    const request = ++this._ticketRequest;
+    this.ticketPreview.reset();
     if (!key.trim()) {
       this._post({ command: 'ticketError', payload: 'Please enter a valid issue key.' });
       return;
@@ -140,10 +173,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       const ticket = await this._ticketManager.fetchTicket(key.trim().toUpperCase());
+      if (request !== this._ticketRequest) return;
+      this._lastChunks = undefined;
+      this._lastGuide = undefined;
       this._lastTicket = ticket;
       await this._workspaceState.update('lastTicket', ticket);
       await this._workspaceState.update('lastChunks', undefined);
       await this._workspaceState.update('lastGuide', undefined);
+      if (request !== this._ticketRequest) return;
       this._post({ command: 'ticketResult', payload: ticket });
     } catch (err) {
       this._post({ command: 'ticketError', payload: (err as Error).message });
@@ -247,7 +284,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._lastChunks = savedChunks;
         this._post({ command: 'analysisResult', payload: savedChunks });
       }
-      if (savedGuide) {
+      this.ticketPreview.replay();
+      if (savedGuide && savedGuide.ticketKey === savedTicket?.key) {
         this._lastGuide = savedGuide;
         this._post({ command: 'guideResult', payload: savedGuide });
       }

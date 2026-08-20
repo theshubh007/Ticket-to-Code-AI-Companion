@@ -42,10 +42,12 @@ export function activate(context: vscode.ExtensionContext) {
     ticketManager,
     codeAnalyzer,
     aiEngine,
-    context.workspaceState
+    context.workspaceState,
+    openAIClient
   );
 
   context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(provider.ticketPreview.scheme, provider.ticketPreview),
     vscode.window.registerWebviewViewProvider(
       'ticket-to-code.sidebar',
       provider,

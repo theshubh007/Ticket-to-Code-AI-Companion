@@ -32,6 +32,7 @@ export interface CodeChunk {
 
 export interface EmbeddingIndex {
   version: number;
+  workspaceRoot?: string;
   model?: string;
   createdAt: string;
   chunks: CodeChunk[];
@@ -79,6 +80,9 @@ export interface ModelSummary {
 // Discriminated unions — every message has a command field as the discriminator
 
 export type MessageFromWebview =
+  | { command: 'previewTicket'; payload: { key: string } }
+  | { command: 'reviewTicketChange' | 'applyTicketChange' | 'discardTicketChange'; payload: { id: string } }
+  | { command: 'clearTicket' }
   | { command: 'ping' }
   | { command: 'getAISettings' }
   | {
@@ -99,6 +103,7 @@ export type MessageFromWebview =
   | { command: 'openFile'; payload: { filePath: string; startLine: number; endLine: number } };
 
 export type MessageToWebview =
+  | { command: 'ticketAgent'; payload: TicketAgentStatus }
   | { command: 'pong'; payload: string }
   | { command: 'aiSettings'; payload: AISettingsPayload }
   | { command: 'aiSettingsSaved'; payload: string }
@@ -121,3 +126,9 @@ export type MessageToWebview =
   | { command: 'conflictWarning'; payload: { conflictingPaths: string[] } }
   | { command: 'modelList'; payload: ModelSummary[] }
   | { command: 'modelListError'; payload: string };
+export interface TicketAgentStatus {
+  id: string;
+  ticketKey: string;
+  phase: 'running' | 'review' | 'applying' | 'done' | 'error';
+  message: string;
+}

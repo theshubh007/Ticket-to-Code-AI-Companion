@@ -16,10 +16,12 @@ async function main() {
     const extensionDevelopmentPath = path.resolve(__dirname, '../../../../');
     const extensionTestsPath = path.resolve(__dirname, './suite/index');
 
+    const workspaceDir = path.join(userDataDir, 'fixture-workspace');
+    fs.mkdirSync(workspaceDir);
     await runTests({
       extensionDevelopmentPath,
       extensionTestsPath,
-      launchArgs: [`--user-data-dir=${userDataDir}`],
+      launchArgs: [workspaceDir, `--user-data-dir=${userDataDir}`],
     });
   } catch (err) {
     console.error('E2E test run failed:', err);

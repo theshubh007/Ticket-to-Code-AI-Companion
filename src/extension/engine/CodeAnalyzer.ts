@@ -13,7 +13,7 @@ const MAX_CONCURRENT_BATCHES = 3;
 
 export class CodeAnalyzer {
   private chunks: CodeChunk[] = [];
-  private indexed = false;
+  private indexedRoot?: string;
   private monitor = new PerformanceMonitor();
 
   constructor(
@@ -38,7 +38,7 @@ export class CodeAnalyzer {
       await this.cache.clearEmbeddingIndex();
     }
 
-    const validCache = cached?.model === EMBEDDING_MODEL ? cached : null;
+    const validCache = cached?.model === EMBEDDING_MODEL && cached.workspaceRoot === rootPath ? cached : null;
     const existingMap = new Map<string, CodeChunk[]>();
     if (validCache) {
       for (const chunk of validCache.chunks) {
@@ -122,12 +122,13 @@ export class CodeAnalyzer {
     this.monitor.end('embedding');
 
     this.chunks = allChunks;
-    this.indexed = true;
+    this.indexedRoot = rootPath;
 
     // Persist updated index
     this.monitor.start('cache-save');
     const index: EmbeddingIndex = {
       version: 1,
+      workspaceRoot: rootPath,
       model: EMBEDDING_MODEL,
       createdAt: new Date().toISOString(),
       chunks: allChunks,
@@ -139,21 +140,22 @@ export class CodeAnalyzer {
     this.monitor.log();
   }
 
-  async search(queryText: string, topN: number = 10): Promise<CodeChunk[]> {
-    if (!this.indexed) {
+  async search(queryText: string, topN: number = 10, workspaceRoot?: string): Promise<CodeChunk[]> {
+    if (!this.indexedRoot || (workspaceRoot && workspaceRoot !== this.indexedRoot)) {
       throw new Error('Workspace not indexed yet. Call indexWorkspace first.');
     }
 
+    const chunks = this.chunks;
     this.monitor.start('search');
     const [queryEmbedding] = await this.openAI.embed([queryText]);
-    const results = rankChunks(queryEmbedding, this.chunks, topN);
+    const results = rankChunks(queryEmbedding, chunks, topN);
     this.monitor.end('search');
 
     return results;
   }
 
   isIndexed(): boolean {
-    return this.indexed;
+    return this.indexedRoot !== undefined;
   }
 
   getChunkCount(): number {

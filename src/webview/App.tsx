@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import type { TicketAgentStatus } from '../extension/types';
 import { postMessage } from './vscodeApi';
 import {
   TicketData,
@@ -93,6 +94,7 @@ const initialState: AppState = {
 
 export function App() {
   const [state, setState] = useState<AppState>(initialState);
+  const [agent, setAgent] = useState<TicketAgentStatus | null>(null);
   const [ticketSearch, setTicketSearch] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
 
@@ -155,6 +157,10 @@ export function App() {
             ticketListError: payload as string,
             ticketListLoading: false,
           });
+          break;
+
+        case 'ticketAgent':
+          setAgent(payload as TicketAgentStatus);
           break;
 
         case 'ticketResult':
@@ -305,12 +311,15 @@ export function App() {
   }
 
   function handleFetchTicket(key: string) {
-    updateState({ ticketLoading: true, ticketError: null, ticket: null });
+    setAgent(null);
+    updateState({ ticketLoading: true, ticketError: null, ticket: null, chunks: null, guide: null });
     postMessage('fetchTicket', { key });
   }
 
   function handleClearTicket() {
-    updateState({ ticket: null, ticketError: null });
+    setAgent(null);
+    postMessage('clearTicket');
+    updateState({ ticket: null, ticketError: null, chunks: null, guide: null });
   }
 
   function handleAnalyzeRepo() {
@@ -405,6 +414,9 @@ export function App() {
         modelListLoading={state.modelListLoading}
         onGetModelList={handleGetModelList}
       />
+      {state.ticket && (
+        <TicketChangeActions ticketKey={state.ticket.key} agent={agent?.ticketKey === state.ticket.key ? agent : null} />
+      )}
       <AnalysisPanel
         chunks={state.chunks}
         error={state.analysisError}
@@ -434,5 +446,29 @@ export function App() {
         onUndo={handleUndo}
       />
     </div>
+  );
+}
+
+function TicketChangeActions({ ticketKey, agent }: { ticketKey: string; agent: TicketAgentStatus | null }) {
+  const review = agent?.phase === 'review';
+  const busy = agent?.phase === 'running' || agent?.phase === 'applying';
+  return (
+    <section className="panel">
+      {review ? (
+        <div className="diff-viewer-actions">
+          <button className="btn btn-primary" onClick={() => postMessage('applyTicketChange', { id: agent.id })}>Apply change</button>
+          <button className="btn btn-secondary" onClick={() => postMessage('reviewTicketChange', { id: agent.id })}>View diff</button>
+          <button className="btn btn-secondary" onClick={() => postMessage('discardTicketChange', { id: agent.id })}>Discard</button>
+        </div>
+      ) : (
+        <button className="btn btn-primary" disabled={busy} onClick={() => postMessage('previewTicket', { key: ticketKey })}>
+          Preview ticket change
+        </button>
+      )}
+      {agent?.phase === 'running' && (
+        <button className="btn btn-secondary" onClick={() => postMessage('discardTicketChange', { id: agent.id })}>Cancel</button>
+      )}
+      {agent && <p role="status" className={agent.phase === 'error' ? 'error-banner' : 'hint'}>{agent.message}</p>}
+    </section>
   );
 }

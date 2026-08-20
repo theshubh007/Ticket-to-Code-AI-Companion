@@ -1,4 +1,6 @@
 const vscode = {
+  Range: class {},
+  commands: { executeCommand: jest.fn() },
   window: {
     showInputBox: jest.fn(),
     showErrorMessage: jest.fn(),
