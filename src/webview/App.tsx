@@ -451,24 +451,50 @@ export function App() {
 
 function TicketChangeActions({ ticketKey, agent }: { ticketKey: string; agent: TicketAgentStatus | null }) {
   const review = agent?.phase === 'review';
-  const busy = agent?.phase === 'running' || agent?.phase === 'applying';
+  const busy = agent?.phase === 'running' || agent?.phase === 'applying' || agent?.phase === 'testing';
   return (
     <section className="panel">
       {review ? (
-        <div className="diff-viewer-actions">
-          <button className="btn btn-primary" onClick={() => postMessage('applyTicketChange', { id: agent.id })}>Apply change</button>
-          <button className="btn btn-secondary" onClick={() => postMessage('reviewTicketChange', { id: agent.id })}>View diff</button>
-          <button className="btn btn-secondary" onClick={() => postMessage('discardTicketChange', { id: agent.id })}>Discard</button>
-        </div>
+        <>
+          <strong>Fix and tests</strong>
+          <p>{agent.coverage}</p>
+          <ul className="proposal-files">
+            {agent.files?.map(file => (
+              <li key={file.filePath}>
+                <button onClick={() => postMessage('reviewTicketChange', { id: agent.id, filePath: file.filePath })}>
+                  <span>{file.isNew ? 'New test' : { fix: 'Fix', test: 'Test', setup: 'Setup' }[file.purpose]}</span>
+                  {file.filePath}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="diff-viewer-actions">
+            <button className="btn btn-primary" onClick={() => postMessage('applyTicketChange', { id: agent.id })}>Apply all changes</button>
+            <button className="btn btn-secondary" onClick={() => postMessage('discardTicketChange', { id: agent.id })}>Discard</button>
+          </div>
+        </>
       ) : (
         <button className="btn btn-primary" disabled={busy} onClick={() => postMessage('previewTicket', { key: ticketKey })}>
-          Preview ticket change
+          Propose fix and tests
         </button>
+      )}
+      {agent?.existingTest && (review || agent.phase === 'done') && (
+        <button className="btn btn-secondary" onClick={() => postMessage('openFile', agent.existingTest)}>
+          View existing test in {agent.existingTest.filePath}
+        </button>
+      )}
+      {agent?.phase === 'applied' && (
+        <button className="btn btn-primary" onClick={() => postMessage('runTicketTests', { id: agent.id })}>Run tests</button>
+      )}
+      {agent?.phase === 'testing' && (
+        <button className="btn btn-secondary" onClick={() => postMessage('stopTicketTests', { id: agent.id })}>Stop tests</button>
       )}
       {agent?.phase === 'running' && (
         <button className="btn btn-secondary" onClick={() => postMessage('discardTicketChange', { id: agent.id })}>Cancel</button>
       )}
-      {agent && <p role="status" className={agent.phase === 'error' ? 'error-banner' : 'hint'}>{agent.message}</p>}
+      {agent && <p role="status" className={agent.phase === 'error' || agent.testResult?.outcome === 'failed' ? 'error-banner' : 'hint'}>{agent.message}</p>}
+      {agent?.testResult?.command && <code>{agent.testResult.command}</code>}
+      {agent?.testResult?.output && <pre className="ticket-test-output" aria-label="Test output">{agent.testResult.output}</pre>}
     </section>
   );
 }

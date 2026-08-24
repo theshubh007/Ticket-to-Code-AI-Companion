@@ -1,5 +1,10 @@
 const vscode = {
   Range: class {},
+  WorkspaceEdit: class {
+    replacement = '';
+    createFile() {}
+    replace(_uri: unknown, _range: unknown, value: string) { this.replacement = value; }
+  },
   commands: { executeCommand: jest.fn() },
   window: {
     showInputBox: jest.fn(),

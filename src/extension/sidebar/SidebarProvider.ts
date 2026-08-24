@@ -95,10 +95,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }
             break;
           case 'reviewTicketChange':
-            await this.ticketPreview.show(message.payload.id);
+            await this.ticketPreview.show(message.payload.id, message.payload.filePath);
             break;
           case 'discardTicketChange':
             this.ticketPreview.discard(message.payload.id);
+            break;
+          case 'runTicketTests':
+            await this.ticketPreview.runTests(message.payload.id);
+            break;
+          case 'stopTicketTests':
+            this.ticketPreview.stopTests(message.payload.id);
             break;
           case 'applyTicketChange':
             await this.ticketPreview.apply(message.payload.id);
@@ -182,6 +188,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       await this._workspaceState.update('lastGuide', undefined);
       if (request !== this._ticketRequest) return;
       this._post({ command: 'ticketResult', payload: ticket });
+      await this.ticketPreview.start(ticket);
     } catch (err) {
       this._post({ command: 'ticketError', payload: (err as Error).message });
     }

@@ -81,7 +81,8 @@ export interface ModelSummary {
 
 export type MessageFromWebview =
   | { command: 'previewTicket'; payload: { key: string } }
-  | { command: 'reviewTicketChange' | 'applyTicketChange' | 'discardTicketChange'; payload: { id: string } }
+  | { command: 'reviewTicketChange'; payload: { id: string; filePath: string } }
+  | { command: 'applyTicketChange' | 'discardTicketChange' | 'runTicketTests' | 'stopTicketTests'; payload: { id: string } }
   | { command: 'clearTicket' }
   | { command: 'ping' }
   | { command: 'getAISettings' }
@@ -126,9 +127,26 @@ export type MessageToWebview =
   | { command: 'conflictWarning'; payload: { conflictingPaths: string[] } }
   | { command: 'modelList'; payload: ModelSummary[] }
   | { command: 'modelListError'; payload: string };
+export interface ProjectTestResult {
+  command?: string;
+  outcome: 'passed' | 'failed' | 'empty' | 'unavailable' | 'cancelled';
+  summary: string;
+  output: string;
+}
+
+export interface ProposalFile {
+  filePath: string;
+  purpose: 'fix' | 'test' | 'setup';
+  isNew: boolean;
+}
+
 export interface TicketAgentStatus {
+  files?: ProposalFile[];
+  coverage?: string;
+  existingTest?: { filePath: string; startLine: number; endLine: number };
+  testResult?: ProjectTestResult;
   id: string;
   ticketKey: string;
-  phase: 'running' | 'review' | 'applying' | 'done' | 'error';
+  phase: 'running' | 'review' | 'applying' | 'applied' | 'testing' | 'done' | 'error';
   message: string;
 }

@@ -21,14 +21,16 @@ const BLOCKED_DIRS = new Set([
 
 // File extensions we can meaningfully embed
 const ALLOWED_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.jsx',
+  '.ts', '.tsx', '.js', '.jsx', '.cjs', '.mjs',
   '.py', '.java', '.cs', '.go',
   '.rb', '.php', '.swift', '.kt',
   '.rs', '.cpp', '.c', '.h',
   '.md', '.json', '.yaml', '.yml',
   '.html', '.css', '.scss',
-  '.sh', '.bash',
+  '.sh', '.bash', '.toml', '.gradle', '.kts', '.bazel',
 ]);
+
+const BUILD_FILES = new Set(['BUILD', 'WORKSPACE', 'Makefile', 'pom.xml']);
 
 const MAX_FILE_SIZE_BYTES = 500 * 1024; // 500KB — skip huge generated files
 
@@ -70,7 +72,7 @@ function walk(rootPath: string, currentPath: string, results: WalkedFile[]) {
     }
 
     const ext = path.extname(entry.name).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
+    if (!ALLOWED_EXTENSIONS.has(ext) && !BUILD_FILES.has(entry.name)) {
       continue;
     }
 

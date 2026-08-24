@@ -1077,3 +1077,27 @@ body {
   padding: 6px 10px;
   border-top: 1px solid rgba(115, 201, 145, 0.15);
 }
+.ticket-test-output {
+  max-height: 22rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--vscode-editor-font-family, monospace);
+  user-select: text;
+}
+
+.proposal-files { list-style: none; padding: 0; }
+.proposal-files button {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 0;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  border: none;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.proposal-files button span { flex: none; color: var(--vscode-descriptionForeground); }
+.proposal-files button:hover { text-decoration: underline; }

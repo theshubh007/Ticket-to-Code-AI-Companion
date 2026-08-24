@@ -14,6 +14,9 @@ const ticket: TicketData = { key: 'DEMO-1', summary: 'Explain an empty list', de
 const original = 'return items;\r\n';
 const proposed = "return items.length ? items : 'No items';\r\n";
 const target = 'list.ts';
+const testPath = 'tests/list.test.ts';
+const assertion = "expect(render([])).toBe('No items')";
+const regression = `it('explains an empty list', () => ${assertion});\n`;
 
 function call(name: string, args: Record<string, string>): AssistantTurn {
   return { role: 'assistant', content: null, tool_calls: [
@@ -35,13 +38,15 @@ describe('ticket preview', () => {
     text = original;
     statuses = [];
     snapshots = [];
-    const doc = { getText: () => text, positionAt: (offset: number) => offset, isDirty: false };
-    const editor = { edit: async (fn: (edit: { replace(range: unknown, value: string): void }) => void) => {
-      fn({ replace: (_, value) => { text = value; } });
-      return true;
-    } };
-    Object.assign(vscode.workspace, { workspaceFolders: [{ uri: { fsPath: root } }], openTextDocument: async () => doc });
-    Object.assign(vscode.window, { showTextDocument: async () => editor });
+    const doc = { uri: vscode.Uri.file(path.join(root, target)), getText: () => text, positionAt: (offset: number) => offset, isDirty: false };
+    Object.assign(vscode.workspace, {
+      workspaceFolders: [{ uri: { fsPath: root } }],
+      openTextDocument: async (uri: vscode.Uri) => uri.fsPath === doc.uri.fsPath ? doc : {
+        ...doc, uri, getText: () => require('fs').readFileSync(uri.fsPath, 'utf8'),
+      },
+      applyEdit: jest.fn(async (edit: { replacement: string }) => { text = edit.replacement; return true; }),
+    });
+    Object.assign(vscode.window, { showTextDocument: jest.fn() });
     Object.assign(vscode.Uri, { from: (parts: object) => ({ toString: () => JSON.stringify(parts) }) });
     Object.assign(vscode.commands, { executeCommand: async (name: string, before: vscode.Uri, after: vscode.Uri) => {
       expect(name).toBe('vscode.diff');
@@ -55,8 +60,13 @@ describe('ticket preview', () => {
         const hits = JSON.parse(previous.content);
         return call('read_file', { filePath: hits[0].filePath });
       }
-      const file = JSON.parse(previous.content);
-      return call('propose_edit', { filePath: file.filePath, before: file.content, after: proposed });
+      if (previous.tool_call_id === 'read_file') {
+        const file = JSON.parse(previous.content);
+        return call('propose_edit', { filePath: file.filePath, before: file.content, after: proposed, purpose: 'fix' });
+      }
+      if (previous.tool_call_id === 'propose_edit') return call('list_files', { query: 'test' });
+      if (previous.tool_call_id === 'list_files') return call('propose_test_file', { filePath: testPath, content: regression });
+      return call('finish_proposal', { implementationPath: target, testFilePath: testPath, assertion, coverage: 'Covers empty lists.' });
     });
     preview = new TicketPreview({ agentTurn }, {
       indexWorkspace: jest.fn(), search: async () => [{ filePath: target, content: original, startLine: 0, endLine: 0 }],
@@ -68,9 +78,14 @@ describe('ticket preview', () => {
   it('opens both snapshots and edits the document only on explicit Apply', async () => {
     await preview.start(ticket);
     const review = statuses[statuses.length - 1];
-    expect(review).toMatchObject({ phase: 'review', message: 'Review the proposed change to list.ts.' });
+    expect(review).toMatchObject({ phase: 'review', files: [
+      { filePath: target, purpose: 'fix', isNew: false }, { filePath: testPath, purpose: 'test', isNew: true },
+    ] });
     expect(snapshots).toEqual([original, proposed]);
-    expect(agentTurn).toHaveBeenCalledTimes(3);
+    await preview.show(review.id, testPath);
+    expect(snapshots).toEqual(['', regression]);
+    await expect(fs.stat(path.join(root, testPath))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
     expect(text).toBe(original);
     await preview.apply('unrelated-preview');
     expect(text).toBe(original);
@@ -117,10 +132,70 @@ describe('ticket preview', () => {
     expect(await fs.readFile(path.join(root, target), 'utf8')).toBe('another edit');
   });
 
+  it('preserves a new test path that someone created after preview', async () => {
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    await fs.mkdir(path.join(root, 'tests'));
+    await fs.writeFile(path.join(root, testPath), 'my test');
+    await preview.apply(review.id);
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'error' });
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(root, testPath), 'utf8')).toBe('my test');
+  });
+
+  it('rejects a test directory replaced by a symbolic link after review', async () => {
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    await fs.symlink(os.tmpdir(), path.join(root, 'tests'));
+    await preview.apply(review.id);
+    expect(statuses[statuses.length - 1].message).toMatch(/symbolic link/);
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('reviews existing test coverage (extend test = %s)', async extend => {
+    const existing = 'list.test.ts';
+    const oldTest = extend ? "it('renders items', () => checkItems());" : regression;
+    await fs.writeFile(path.join(root, existing), oldTest);
+    const turns = [
+      call('list_files', { query: 'list' }), call('read_file', { filePath: target }),
+      call('propose_edit', { filePath: target, before: original, after: proposed, purpose: 'fix' }),
+      call('read_file', { filePath: existing }),
+    ];
+    if (extend) turns.push(call('propose_edit', { filePath: existing, before: oldTest, after: oldTest + '\n' + regression, purpose: 'test' }));
+    turns.push(call('finish_proposal', { implementationPath: target, testFilePath: existing, assertion, coverage: 'Checks the empty list.' }));
+    agentTurn.mockImplementation(async () => turns.shift());
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    expect(review.phase).toBe('review');
+    expect(review.files).toHaveLength(extend ? 2 : 1);
+    expect(review.coverage).toBe('Checks the empty list.');
+    if (!extend) expect(review.existingTest).toMatchObject({ filePath: existing, startLine: 0 });
+    if (extend) {
+      await preview.show(review.id, existing);
+      expect(snapshots).toEqual([oldTest, oldTest + '\n' + regression]);
+    }
+  });
+
+  it('allows a tests-only proposal when the implementation is already fixed', async () => {
+    text = proposed;
+    await fs.writeFile(path.join(root, target), proposed);
+    const turns = [
+      call('list_files', { query: 'list' }), call('read_file', { filePath: target }),
+      call('propose_test_file', { filePath: testPath, content: regression }),
+      call('finish_proposal', { implementationPath: target, testFilePath: testPath, assertion, coverage: 'The fix exists. Adds empty-list coverage.' }),
+    ];
+    agentTurn.mockImplementation(async () => turns.shift());
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    expect(review.phase).toBe('review');
+    expect(review.files?.map(file => file.filePath)).toEqual([testPath]);
+    expect(snapshots).toEqual(['', regression]);
+  });
+
   it('stops a model repeatedly proposing an unread file', async () => {
     agentTurn.mockImplementation(async () => call('propose_edit', { filePath: '../outside.ts', before: 'a', after: 'b' }));
     await preview.start(ticket);
-    expect(agentTurn).toHaveBeenCalledTimes(8);
+    expect(agentTurn).toHaveBeenCalledTimes(18);
     expect(statuses[statuses.length - 1].phase).toBe('error');
     expect(snapshots).toEqual([]);
   });

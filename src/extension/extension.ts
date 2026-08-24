@@ -47,6 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    { dispose: () => provider.ticketPreview.reset() },
     vscode.workspace.registerTextDocumentContentProvider(provider.ticketPreview.scheme, provider.ticketPreview),
     vscode.window.registerWebviewViewProvider(
       'ticket-to-code.sidebar',
