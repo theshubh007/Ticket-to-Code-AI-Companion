@@ -210,18 +210,18 @@ export function DiffViewer({ diffs, onApply, onCancel }: Props) {
     <div className="diff-viewer">
       <div className="diff-viewer-header">
         <div className="diff-viewer-title">
-          <span className="panel-number">④</span>
-          <h2 className="panel-title">Review Changes</h2>
-          <span className="panel-badge">{fileData.length} file{fileData.length !== 1 ? 's' : ''}</span>
+          <h1>Review changes</h1>
+          <p>{fileData.length} file{fileData.length !== 1 ? 's' : ''} · skip files or reject hunks you don’t want</p>
         </div>
-        <div className="diff-viewer-actions">
-          <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+        <div className="button-row">
+          <button type="button" className="btn btn--secondary" onClick={onCancel}><span>Cancel</span></button>
           <button
-            className="btn btn-primary"
+            type="button"
+            className="btn btn--primary"
             onClick={handleApply}
             disabled={activeCount === 0}
           >
-            Apply {activeCount} file{activeCount !== 1 ? 's' : ''}
+            <span>Apply {activeCount} file{activeCount !== 1 ? 's' : ''}</span>
           </button>
         </div>
       </div>
@@ -259,11 +259,11 @@ function DiffFile({ data, skipped, rejectedHunks, onToggleSkip, onToggleHunk }: 
   return (
     <div className={`diff-file ${skipped ? 'diff-file--skipped' : ''}`}>
       <div className="diff-file-header" onClick={() => setExpanded((v) => !v)}>
-        <span className="diff-file-chevron">{expanded ? '▼' : '▶'}</span>
+        <span className={`diff-file-chevron${expanded ? ' diff-file-chevron--open' : ''}`} aria-hidden="true">›</span>
         <span className="diff-file-path">{data.diff.filePath}</span>
         <div className="diff-file-meta">
           <span className="diff-badge diff-badge--add">+{data.totalAdds}</span>
-          <span className="diff-badge diff-badge--remove">-{data.totalRemoves}</span>
+          <span className="diff-badge diff-badge--remove">−{data.totalRemoves}</span>
           {data.hunkCount > 1 && (
             <span className="diff-badge diff-badge--hunk">
               {acceptedHunks}/{data.hunkCount} hunks
@@ -271,10 +271,11 @@ function DiffFile({ data, skipped, rejectedHunks, onToggleSkip, onToggleHunk }: 
           )}
         </div>
         <button
-          className={`btn btn-sm ${skipped ? 'btn-primary' : 'btn-secondary'}`}
+          type="button"
+          className="btn btn--small btn--plain"
           onClick={(e) => { e.stopPropagation(); onToggleSkip(); }}
         >
-          {skipped ? 'Restore' : 'Skip file'}
+          <span>{skipped ? 'Include' : 'Skip'}</span>
         </button>
       </div>
 
@@ -302,10 +303,11 @@ function DiffFile({ data, skipped, rejectedHunks, onToggleSkip, onToggleHunk }: 
                 <div className="diff-hunk-header">
                   <span className="diff-hunk-label">Hunk {seg.hunkIdx + 1}</span>
                   <button
-                    className={`btn btn-sm ${rejected ? 'btn-primary' : 'btn-secondary'}`}
+                    type="button"
+                    className="btn btn--small btn--plain"
                     onClick={() => onToggleHunk(seg.hunkIdx)}
                   >
-                    {rejected ? '↩ Restore' : '✕ Reject'}
+                    <span>{rejected ? 'Keep' : 'Reject'}</span>
                   </button>
                 </div>
                 {seg.lines.map((line, li) => (

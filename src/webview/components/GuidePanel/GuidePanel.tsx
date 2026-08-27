@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ImplementationGuide, ImplementationStep, FileReference, FileDiff } from '../../types';
+import { Icon } from '../shared/Icon';
+import { Button, Note } from '../shared/ui';
 
 interface Props {
   guide: ImplementationGuide | null;
@@ -21,6 +23,7 @@ interface Props {
   onUndo: () => void;
 }
 
+/** Step-by-step plan for the ticket, shown inside the "Implementation guide" disclosure. */
 export function GuidePanel({
   guide,
   error,
@@ -44,126 +47,66 @@ export function GuidePanel({
   const [confirmImplement, setConfirmImplement] = useState(false);
 
   return (
-    <section className={`panel ${disabled ? 'panel--disabled' : ''}`}>
-      <div className="panel-header">
-        <span className="panel-number">③</span>
-        <h2 className="panel-title">Implementation Guide</h2>
-        {guide && (
-          <span className="panel-badge success">{guide.steps.length} steps</span>
-        )}
-      </div>
-
-      <button
-        className="btn btn-primary"
-        onClick={onGenerate}
-        disabled={disabled || loading}
-      >
-        {loading ? (
-          <span className="btn-loading">
-            <span className="spinner-dot" />
-            <span className="spinner-dot" />
-            <span className="spinner-dot" />
-          </span>
-        ) : guide ? (
-          'Regenerate'
-        ) : (
-          'Generate Guide'
-        )}
-      </button>
-
-      {loading && (
-        <p className="hint">Calling AI — this may take a few seconds...</p>
+    <div className="stack">
+      {disabled && !guide && (
+        <p className="card-status">Search the workspace under Related code first, so the guide can point at real files.</p>
       )}
 
-      {error && (
-        <div className="error-banner">
-          <span className="error-icon">⚠</span>
-          <span>{error}</span>
-        </div>
-      )}
+      <Button variant="secondary" block icon="list" onClick={onGenerate} disabled={disabled} loading={loading}>
+        {guide ? 'Write a new guide' : 'Write guide'}
+      </Button>
+
+      {loading && <p className="card-status">Writing the guide. This can take a few seconds…</p>}
+      {error && <Note tone="error">{error}</Note>}
 
       {guide && (
-        <div className="guide-wrap">
-          <p className="guide-meta">
-            Generated for {guide.ticketKey} ·{' '}
-            {new Date(guide.generatedAt).toLocaleTimeString()}
+        <>
+          <p className="card-footnote">
+            {guide.steps.length} steps · {new Date(guide.generatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </p>
 
-          <div className="step-list">
+          <ol className="group group--nested guide-steps">
             {guide.steps.map((step) => (
-              <StepCard
+              <StepRow
                 key={step.stepNumber}
                 step={step}
                 expanded={expandedStep === step.stepNumber}
-                onToggle={() =>
-                  setExpandedStep(
-                    expandedStep === step.stepNumber ? null : step.stepNumber
-                  )
-                }
+                onToggle={() => setExpandedStep(expandedStep === step.stepNumber ? null : step.stepNumber)}
                 onOpenFile={onOpenFile}
               />
             ))}
-          </div>
+          </ol>
 
-          {!confirmImplement && (
-            <button
-              className="btn btn-primary"
-              onClick={() => setConfirmImplement(true)}
-              disabled={implementLoading}
-              style={{ marginTop: 8 }}
-            >
-              {implementLoading ? (
-                <span className="btn-loading">
-                  <span className="spinner-dot" />
-                  <span className="spinner-dot" />
-                  <span className="spinner-dot" />
-                </span>
-              ) : (
-                'Implement'
-              )}
-            </button>
+          {!confirmImplement && !implementResult && (
+            <Button variant="secondary" block onClick={() => setConfirmImplement(true)} loading={implementLoading}>
+              Implement all steps
+            </Button>
           )}
 
           {confirmImplement && !implementLoading && (
-            <div className="implement-confirm">
-              <p className="implement-confirm-text">
-                This will modify {guide.steps.length} step{guide.steps.length !== 1 ? 's' : ''} worth of files in your workspace. Continue?
-              </p>
-              <div className="implement-confirm-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={() => { setConfirmImplement(false); onImplement(); }}
-                >
-                  Yes, implement
-                </button>
-                <button className="btn btn-secondary" onClick={() => setConfirmImplement(false)}>
-                  Cancel
-                </button>
-              </div>
-            </div>
+            <Note
+              tone="warning"
+              title="Implement every step?"
+              action={
+                <div className="button-row">
+                  <Button variant="secondary" size="small" onClick={() => setConfirmImplement(false)}>Cancel</Button>
+                  <Button variant="primary" size="small" onClick={() => { setConfirmImplement(false); onImplement(); }}>
+                    Implement
+                  </Button>
+                </div>
+              }
+            >
+              The assistant edits the files named in all {guide.steps.length} steps. You review the diffs before anything is saved.
+            </Note>
           )}
 
-
-          {(implementLoading || implementLog.length > 0) && (
-            <ImplementLog lines={implementLog} />
-          )}
-
-          {implementError && (
-            <div className="error-banner">
-              <span className="error-icon">⚠</span>
-              <span>{implementError}</span>
-            </div>
-          )}
+          {(implementLoading || implementLog.length > 0) && <ImplementLog lines={implementLog} />}
+          {implementError && <Note tone="error">{implementError}</Note>}
 
           {conflictWarning && conflictWarning.length > 0 && (
-            <div className="error-banner">
-              <span className="error-icon">⚠</span>
-              <span>
-                {conflictWarning.length} file{conflictWarning.length !== 1 ? 's' : ''} changed
-                since guide was generated:{' '}
-                {conflictWarning.join(', ')}. Applied anyway — review carefully.
-              </span>
-            </div>
+            <Note tone="warning" title="Files changed after the guide was written">
+              {conflictWarning.join(', ')} changed since the guide was generated. The edits were applied anyway, so review them carefully.
+            </Note>
           )}
 
           {implementResult && (
@@ -171,175 +114,117 @@ export function GuidePanel({
               diffs={lastAppliedDiffs}
               filesModified={implementResult.filesModified}
               undoLoading={undoLoading}
-              undoStatus={undoStatus}
-              undoError={undoError}
               onUndo={onUndo}
             />
           )}
-        </div>
+          {undoStatus && <Note tone="success">{undoStatus}</Note>}
+          {undoError && <Note tone="error">{undoError}</Note>}
+        </>
       )}
-    </section>
+    </div>
   );
 }
 
-interface StepCardProps {
+function StepRow({
+  step,
+  expanded,
+  onToggle,
+  onOpenFile,
+}: {
   step: ImplementationStep;
   expanded: boolean;
   onToggle: () => void;
   onOpenFile: (filePath: string, startLine: number, endLine: number) => void;
-}
-
-function StepCard({ step, expanded, onToggle, onOpenFile }: StepCardProps) {
+}) {
   return (
-    <div className="step-card">
-      <div className="step-card-header" onClick={onToggle}>
-        <span className="step-number">{step.stepNumber}</span>
-        <span className="step-title">{step.title}</span>
-        <span className="step-chevron">{expanded ? '▲' : '▼'}</span>
-      </div>
-
+    <li className="guide-step">
+      <button type="button" className="guide-step-header" aria-expanded={expanded} onClick={onToggle}>
+        <span className="guide-step-number">{step.stepNumber}</span>
+        <span className="guide-step-title">{step.title}</span>
+        <Icon name="chevronRight" size={12} className={`snippet-chevron${expanded ? ' snippet-chevron--open' : ''}`} />
+      </button>
       {expanded && (
-        <div className="step-card-body">
-          <p className="step-explanation">{step.explanation}</p>
-
-          {step.fileReferences.length > 0 && (
-            <div className="file-refs">
-              <p className="file-refs-label">Referenced files</p>
-              {step.fileReferences.map((ref, i) => (
-                <FileRefRow
-                  key={i}
-                  ref_={ref}
-                  onOpenFile={onOpenFile}
-                />
-              ))}
-            </div>
-          )}
+        <div className="guide-step-body">
+          <p className="body-text">{step.explanation}</p>
+          {step.fileReferences.map((ref, i) => (
+            <FileRefRow key={i} fileRef={ref} onOpenFile={onOpenFile} />
+          ))}
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
-interface FileRefRowProps {
-  ref_: FileReference;
+function FileRefRow({
+  fileRef,
+  onOpenFile,
+}: {
+  fileRef: FileReference;
   onOpenFile: (filePath: string, startLine: number, endLine: number) => void;
-}
-
-function FileRefRow({ ref_, onOpenFile }: FileRefRowProps) {
-  const [expanded, setExpanded] = React.useState(false);
-
+}) {
   return (
-    <div
+    <button
+      type="button"
       className="file-ref"
-      onClick={() => setExpanded((v) => !v)}
+      onClick={() => onOpenFile(fileRef.filePath, fileRef.startLine, fileRef.endLine)}
+      title={fileRef.description || `Open ${fileRef.filePath}`}
     >
-      <div className="file-ref-row">
-        <div className="file-ref-info">
-          <span className="file-ref-path">{ref_.filePath}</span>
-          <span className="file-ref-lines">
-            Lines {ref_.startLine}–{ref_.endLine}
-          </span>
-        </div>
-        <button
-          className="btn-link file-ref-open-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenFile(ref_.filePath, ref_.startLine, ref_.endLine);
-          }}
-          title="Open in editor"
-        >
-          ↗ Open
-        </button>
-      </div>
-      {expanded && ref_.description && (
-        <p className="file-ref-desc">{ref_.description}</p>
-      )}
-      {!expanded && (
-        <span className="file-ref-expand-hint">▼</span>
-      )}
-      {expanded && (
-        <span className="file-ref-expand-hint">▲</span>
-      )}
-    </div>
+      <Icon name="fileCode" size={13} />
+      <span className="file-row-text">
+        <span className="file-row-name">{fileRef.filePath.split('/').pop()}</span>
+        <span className="file-row-dir">Lines {fileRef.startLine}–{fileRef.endLine}</span>
+      </span>
+      <Icon name="external" size={12} className="row-chevron" />
+    </button>
   );
 }
 
-interface LastApplySummaryProps {
+function LastApplySummary({
+  diffs,
+  filesModified,
+  undoLoading,
+  onUndo,
+}: {
   diffs: FileDiff[] | null;
   filesModified: string[];
   undoLoading: boolean;
-  undoStatus: string | null;
-  undoError: string | null;
   onUndo: () => void;
-}
-
-function LastApplySummary({ diffs, filesModified, undoLoading, undoStatus, undoError, onUndo }: LastApplySummaryProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  const addCount = diffs?.reduce((sum, d) => sum + d.newCode.split('\n').filter((l) => !d.oldCode.split('\n').includes(l)).length, 0) ?? 0;
-
+}) {
   return (
-    <div className="last-apply-summary">
-      <div className="last-apply-header" onClick={() => setExpanded((v) => !v)}>
-        <span className="last-apply-icon">✓</span>
-        <span className="last-apply-title">
-          Applied {filesModified.length} file{filesModified.length !== 1 ? 's' : ''}
-        </span>
-        <span className="last-apply-chevron">{expanded ? '▲' : '▼'}</span>
-      </div>
-
-      {expanded && diffs && (
-        <div className="last-apply-files">
+    <Note
+      tone="success"
+      title={`Applied ${filesModified.length} file${filesModified.length !== 1 ? 's' : ''}`}
+      action={<Button variant="plain" size="small" icon="undo" onClick={onUndo} loading={undoLoading}>Undo</Button>}
+    >
+      {diffs && (
+        <ul className="applied-files">
           {diffs.map((d) => {
             const oldLines = d.oldCode.split('\n');
             const newLines = d.newCode.split('\n');
             const adds = newLines.filter((l) => !oldLines.includes(l)).length;
             const removes = oldLines.filter((l) => !newLines.includes(l)).length;
             return (
-              <div key={d.filePath} className="last-apply-file-row">
-                <span className="last-apply-file-path">{d.filePath}</span>
-                <span className="diff-badge diff-badge--add">+{adds}</span>
-                <span className="diff-badge diff-badge--remove">-{removes}</span>
-              </div>
+              <li key={d.filePath} title={d.filePath}>
+                <span className="applied-file-name">{d.filePath.split('/').pop()}</span>
+                <span className="diffstat diffstat--add">+{adds}</span>
+                <span className="diffstat diffstat--remove">−{removes}</span>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-
-      <div className="last-apply-actions">
-        <button
-          className="btn btn-secondary"
-          onClick={onUndo}
-          disabled={undoLoading}
-        >
-          {undoLoading ? 'Undoing…' : '↩ Undo last apply'}
-        </button>
-      </div>
-
-      {undoStatus && <p className="status-msg">{undoStatus}</p>}
-      {undoError && (
-        <div className="error-banner">
-          <span className="error-icon">⚠</span>
-          <span>{undoError}</span>
-        </div>
-      )}
-    </div>
+    </Note>
   );
 }
 
 function ImplementLog({ lines }: { lines: string[] }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-
+  const ref = useRef<HTMLPreElement>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
   }, [lines]);
-
   return (
-    <div className="implement-log">
-      {lines.map((line, i) => (
-        <div key={i} className="implement-log-line">{line}</div>
-      ))}
-      <div ref={bottomRef} />
-    </div>
+    <pre ref={ref} className="console console--short" aria-label="Implementation log" aria-live="polite">
+      {lines.join('\n') || 'Starting…'}
+    </pre>
   );
 }

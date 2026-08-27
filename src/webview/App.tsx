@@ -10,10 +10,15 @@ import {
   FileDiff,
   ModelSummary,
 } from './types';
-import { TicketPanel } from './components/TicketPanel/TicketPanel';
+import { TicketList } from './components/TicketList/TicketList';
+import { TicketDetail } from './components/TicketDetail/TicketDetail';
+import { SettingsView } from './components/Settings/SettingsView';
 import { AnalysisPanel } from './components/AnalysisPanel/AnalysisPanel';
 import { GuidePanel } from './components/GuidePanel/GuidePanel';
 import { DiffViewer } from './components/DiffViewer/DiffViewer';
+import { Disclosure, SectionHeading } from './components/shared/ui';
+
+type Screen = 'list' | 'detail' | 'settings';
 
 export type AppState = {
   aiChatModel: string;
@@ -97,6 +102,8 @@ export function App() {
   const [agent, setAgent] = useState<TicketAgentStatus | null>(null);
   const [ticketSearch, setTicketSearch] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [screen, setScreen] = useState<Screen>('list');
+  const [selected, setSelected] = useState<TicketSummary | null>(null);
 
   const updateState = useCallback((partial: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...partial }));
@@ -164,6 +171,7 @@ export function App() {
           break;
 
         case 'ticketResult':
+          setScreen('detail');
           updateState({
             ticket: payload as TicketData,
             ticketError: null,
@@ -306,20 +314,27 @@ export function App() {
     });
   }
 
-  function handleTicketSearchChange(value: string) {
-    setTicketSearch(value);
+  function handleSelectTicket(summary: TicketSummary) {
+    setAgent(null);
+    setSelected(summary);
+    setScreen('detail');
+    updateState({ ticketLoading: true, ticketError: null, ticket: null, chunks: null, guide: null });
+    postMessage('fetchTicket', { key: summary.key });
   }
 
-  function handleFetchTicket(key: string) {
-    setAgent(null);
-    updateState({ ticketLoading: true, ticketError: null, ticket: null, chunks: null, guide: null });
+  function handleRetryTicket() {
+    const key = state.ticket?.key ?? selected?.key;
+    if (!key) return;
+    updateState({ ticketLoading: true, ticketError: null });
     postMessage('fetchTicket', { key });
   }
 
-  function handleClearTicket() {
+  function handleBackToList() {
     setAgent(null);
+    setSelected(null);
+    setScreen('list');
     postMessage('clearTicket');
-    updateState({ ticket: null, ticketError: null, chunks: null, guide: null });
+    updateState({ ticket: null, ticketError: null, ticketLoading: false, chunks: null, guide: null });
   }
 
   function handleAnalyzeRepo() {
@@ -362,139 +377,127 @@ export function App() {
     postMessage('openFile', { filePath, startLine, endLine });
   }
 
-  const normalizedSearch = ticketSearch.trim().toLowerCase();
-  const filteredTicketList = (state.ticketList ?? []).filter((ticket) => {
-    if (!normalizedSearch) {
-      return true;
+  // Escape goes back one screen, unless a dialog or field handles it first.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape' || e.defaultPrevented || state.pendingDiffs || document.querySelector('.model-dialog')) return;
+      if (screen === 'settings') setScreen(state.ticket || selected ? 'detail' : 'list');
+      else if (screen === 'detail') handleBackToList();
     }
-
-    return (
-      ticket.key.toLowerCase().includes(normalizedSearch) ||
-      ticket.summary.toLowerCase().includes(normalizedSearch)
-    );
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   });
+
+  const normalizedSearch = ticketSearch.trim().toLowerCase();
+  const filteredTicketList = (state.ticketList ?? []).filter((ticket) => (
+    !normalizedSearch ||
+    ticket.key.toLowerCase().includes(normalizedSearch) ||
+    ticket.summary.toLowerCase().includes(normalizedSearch)
+  ));
 
   if (state.pendingDiffs) {
     return (
       <div className="app">
-        <DiffViewer
-          diffs={state.pendingDiffs}
-          onApply={handleApplyDiffs}
-          onCancel={handleCancelDiff}
+        <DiffViewer diffs={state.pendingDiffs} onApply={handleApplyDiffs} onCancel={handleCancelDiff} />
+      </div>
+    );
+  }
+
+  if (screen === 'settings') {
+    return (
+      <div className="app">
+        <SettingsView
+          chatModel={state.aiChatModel}
+          apiKeyInput={apiKeyInput}
+          hasApiKey={state.aiHasApiKey}
+          loading={state.aiSettingsLoading}
+          error={state.aiSettingsError}
+          status={state.aiSettingsStatus}
+          modelList={state.modelList}
+          modelListLoading={state.modelListLoading}
+          onChatModelChange={handleChatModelChange}
+          onApiKeyInputChange={setApiKeyInput}
+          onSave={handleSaveAISettings}
+          onGetModelList={handleGetModelList}
+          onBack={() => setScreen(state.ticket || selected ? 'detail' : 'list')}
         />
+      </div>
+    );
+  }
+
+  if (screen === 'detail' && (state.ticket || selected)) {
+    return (
+      <div className="app">
+        <TicketDetail
+          ticket={state.ticket}
+          summary={selected}
+          loading={state.ticketLoading}
+          error={state.ticketError}
+          agent={agent}
+          onBack={handleBackToList}
+          onRetry={handleRetryTicket}
+        >
+          <SectionHeading>More tools</SectionHeading>
+          <div className="content-inset group tools">
+            <Disclosure
+              icon="code"
+              title="Related code"
+              subtitle={state.chunks ? `${state.chunks.length} matches` : 'Find matching code'}
+            >
+              <AnalysisPanel
+                chunks={state.chunks}
+                error={state.analysisError}
+                loading={state.analysisLoading}
+                progress={state.indexingProgress}
+                onAnalyze={handleAnalyzeRepo}
+                onOpenFile={handleOpenFile}
+              />
+            </Disclosure>
+            <Disclosure
+              icon="list"
+              title="Implementation guide"
+              subtitle={state.guide ? `${state.guide.steps.length} steps` : 'A plan you can follow'}
+            >
+              <GuidePanel
+                guide={state.guide}
+                error={state.guideError}
+                loading={state.guideLoading}
+                disabled={!state.chunks}
+                onGenerate={handleGenerateGuide}
+                onOpenFile={handleOpenFile}
+                implementLoading={state.implementLoading}
+                implementLog={state.implementLog}
+                implementResult={state.implementResult}
+                implementError={state.implementError}
+                onImplement={handleImplement}
+                lastAppliedDiffs={state.lastAppliedDiffs}
+                undoLoading={state.undoLoading}
+                undoStatus={state.undoStatus}
+                undoError={state.undoError}
+                conflictWarning={state.conflictWarning}
+                onUndo={handleUndo}
+              />
+            </Disclosure>
+          </div>
+        </TicketDetail>
       </div>
     );
   }
 
   return (
     <div className="app">
-      <TicketPanel
-        ticketList={filteredTicketList}
-        totalTicketCount={state.ticketList?.length ?? 0}
-        ticketSearch={ticketSearch}
-        chatModel={state.aiChatModel}
-        apiKeyInput={apiKeyInput}
-        hasApiKey={state.aiHasApiKey}
-        settingsLoading={state.aiSettingsLoading}
-        settingsError={state.aiSettingsError}
-        settingsStatus={state.aiSettingsStatus}
-        ticketListLoading={state.ticketListLoading}
-        ticketListError={state.ticketListError}
-        ticket={state.ticket}
-        error={state.ticketError}
-        loading={state.ticketLoading}
-        onTicketSearchChange={handleTicketSearchChange}
-        onChatModelChange={handleChatModelChange}
-        onApiKeyInputChange={setApiKeyInput}
-        onSaveAISettings={handleSaveAISettings}
-        onFetch={handleFetchTicket}
-        onClearTicket={handleClearTicket}
-        onRetryList={handleRetryList}
-        modelList={state.modelList}
-        modelListLoading={state.modelListLoading}
-        onGetModelList={handleGetModelList}
-      />
-      {state.ticket && (
-        <TicketChangeActions ticketKey={state.ticket.key} agent={agent?.ticketKey === state.ticket.key ? agent : null} />
-      )}
-      <AnalysisPanel
-        chunks={state.chunks}
-        error={state.analysisError}
-        loading={state.analysisLoading}
-        progress={state.indexingProgress}
-        disabled={!state.ticket}
-        onAnalyze={handleAnalyzeRepo}
-        onOpenFile={handleOpenFile}
-      />
-      <GuidePanel
-        guide={state.guide}
-        error={state.guideError}
-        loading={state.guideLoading}
-        disabled={!state.chunks}
-        onGenerate={handleGenerateGuide}
-        onOpenFile={handleOpenFile}
-        implementLoading={state.implementLoading}
-        implementLog={state.implementLog}
-        implementResult={state.implementResult}
-        implementError={state.implementError}
-        onImplement={handleImplement}
-        lastAppliedDiffs={state.lastAppliedDiffs}
-        undoLoading={state.undoLoading}
-        undoStatus={state.undoStatus}
-        undoError={state.undoError}
-        conflictWarning={state.conflictWarning}
-        onUndo={handleUndo}
+      <TicketList
+        tickets={filteredTicketList}
+        totalCount={state.ticketList?.length ?? 0}
+        search={ticketSearch}
+        loading={state.ticketListLoading}
+        error={state.ticketListError}
+        needsApiKey={!state.aiSettingsLoading && !state.aiHasApiKey}
+        onSearchChange={setTicketSearch}
+        onRefresh={handleRetryList}
+        onSelect={handleSelectTicket}
+        onOpenSettings={() => setScreen('settings')}
       />
     </div>
-  );
-}
-
-function TicketChangeActions({ ticketKey, agent }: { ticketKey: string; agent: TicketAgentStatus | null }) {
-  const review = agent?.phase === 'review';
-  const busy = agent?.phase === 'running' || agent?.phase === 'applying' || agent?.phase === 'testing';
-  return (
-    <section className="panel">
-      {review ? (
-        <>
-          <strong>Fix and tests</strong>
-          <p>{agent.coverage}</p>
-          <ul className="proposal-files">
-            {agent.files?.map(file => (
-              <li key={file.filePath}>
-                <button onClick={() => postMessage('reviewTicketChange', { id: agent.id, filePath: file.filePath })}>
-                  <span>{file.isNew ? 'New test' : { fix: 'Fix', test: 'Test', setup: 'Setup' }[file.purpose]}</span>
-                  {file.filePath}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="diff-viewer-actions">
-            <button className="btn btn-primary" onClick={() => postMessage('applyTicketChange', { id: agent.id })}>Apply all changes</button>
-            <button className="btn btn-secondary" onClick={() => postMessage('discardTicketChange', { id: agent.id })}>Discard</button>
-          </div>
-        </>
-      ) : (
-        <button className="btn btn-primary" disabled={busy} onClick={() => postMessage('previewTicket', { key: ticketKey })}>
-          Propose fix and tests
-        </button>
-      )}
-      {agent?.existingTest && (review || agent.phase === 'done') && (
-        <button className="btn btn-secondary" onClick={() => postMessage('openFile', agent.existingTest)}>
-          View existing test in {agent.existingTest.filePath}
-        </button>
-      )}
-      {agent?.phase === 'applied' && (
-        <button className="btn btn-primary" onClick={() => postMessage('runTicketTests', { id: agent.id })}>Run tests</button>
-      )}
-      {agent?.phase === 'testing' && (
-        <button className="btn btn-secondary" onClick={() => postMessage('stopTicketTests', { id: agent.id })}>Stop tests</button>
-      )}
-      {agent?.phase === 'running' && (
-        <button className="btn btn-secondary" onClick={() => postMessage('discardTicketChange', { id: agent.id })}>Cancel</button>
-      )}
-      {agent && <p role="status" className={agent.phase === 'error' || agent.testResult?.outcome === 'failed' ? 'error-banner' : 'hint'}>{agent.message}</p>}
-      {agent?.testResult?.command && <code>{agent.testResult.command}</code>}
-      {agent?.testResult?.output && <pre className="ticket-test-output" aria-label="Test output">{agent.testResult.output}</pre>}
-    </section>
   );
 }

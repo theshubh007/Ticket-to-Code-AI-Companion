@@ -140,7 +140,7 @@ export function ModelPickerDialog({ currentModel, modelList, modelListLoading, d
               {/* All other models */}
               {otherItems.length > 0 && (
                 <div className="model-dialog-group">
-                  <p className="model-dialog-group-label">All Models</p>
+                  <p className="model-dialog-group-label">All models</p>
                   {otherItems.map((m) => (
                     <ModelRow
                       key={m.id}
