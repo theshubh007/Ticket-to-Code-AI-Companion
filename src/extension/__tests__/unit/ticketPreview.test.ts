@@ -17,6 +17,7 @@ const target = 'list.ts';
 const testPath = 'tests/list.test.ts';
 const assertion = "expect(render([])).toBe('No items')";
 const regression = `it('explains an empty list', () => ${assertion});\n`;
+type AssistantTurnLike = { tool_calls?: { id: string }[] };
 
 function call(name: string, args: Record<string, string>): AssistantTurn {
   return { role: 'assistant', content: null, tool_calls: [
@@ -190,6 +191,121 @@ describe('ticket preview', () => {
     expect(review.phase).toBe('review');
     expect(review.files?.map(file => file.filePath)).toEqual([testPath]);
     expect(snapshots).toEqual(['', regression]);
+  });
+
+  it('reports each agent action as a timeline step', async () => {
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    expect(review.steps?.map(step => step.kind)).toEqual(['index', 'search', 'read', 'edit', 'list', 'edit', 'finish']);
+    expect(review.steps?.every(step => step.ok)).toBe(true);
+    expect(review.steps?.[1]).toMatchObject({ label: 'Searched for “list render”', detail: '1 match' });
+    expect(review.canRevise).toBe(true);
+  });
+
+  it('marks a rejected tool call as a failed step with the reason', async () => {
+    const turns = [
+      call('list_files', { query: 'list' }), call('read_file', { filePath: 'missing.ts' }), call('read_file', { filePath: target }),
+      call('propose_edit', { filePath: target, before: original, after: proposed, purpose: 'fix' }),
+      call('finish_proposal', { implementationPath: target, testFilePath: target, assertion: 'items.length', coverage: 'Inline.' }),
+    ];
+    agentTurn.mockImplementation(async () => turns.shift());
+    await preview.start(ticket);
+    const steps = statuses[statuses.length - 1].steps!;
+    expect(steps[2]).toMatchObject({ kind: 'read', ok: false, detail: 'Choose a discovered workspace path.' });
+    expect(steps[3]).toMatchObject({ kind: 'read', ok: true });
+  });
+
+  it('revises a proposal from the developer instruction in the same conversation', async () => {
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    const extended = regression + "it('keeps items', () => expect(render([1])).toEqual([1]));\n";
+    let seen: AgentMessage[] = [];
+    const turns = [
+      call('discard_edit', { filePath: target }),
+      call('propose_test_file', { filePath: testPath, content: extended }),
+      call('finish_proposal', { implementationPath: target, testFilePath: testPath, assertion, coverage: 'Tests only, as asked.' }),
+    ];
+    agentTurn.mockImplementation(async (messages: AgentMessage[]) => {
+      seen = messages;
+      return turns.shift();
+    });
+    await preview.revise(review.id, '  Only add tests; leave list.ts alone.  ');
+
+    // Every earlier tool call, including finish_proposal, has its answer before the new instruction.
+    const answered = new Set(seen.filter(m => m.role === 'tool').map(m => (m as { tool_call_id: string }).tool_call_id));
+    for (const m of seen) {
+      for (const c of (m as AssistantTurnLike).tool_calls ?? []) expect(answered.has(c.id)).toBe(true);
+    }
+    const request = seen.find(m => m.role === 'user' && String(m.content).includes('Only add tests; leave list.ts alone.'));
+    expect(request).toBeDefined();
+
+    const revised = statuses[statuses.length - 1];
+    expect(revised).toMatchObject({ id: review.id, phase: 'review', coverage: 'Tests only, as asked.', revising: false });
+    expect(revised.files?.map(file => file.filePath)).toEqual([testPath]);
+    expect(revised.steps?.slice(-4).map(step => step.kind)).toEqual(['request', 'discard', 'edit', 'finish']);
+    expect(revised.steps?.find(step => step.kind === 'request')?.label).toBe('You asked: Only add tests; leave list.ts alone.');
+    expect(snapshots).toEqual(['', extended]);
+    await preview.apply(review.id);
+    // Only the new test file is created; list.ts gets no replacement.
+    const applied = (vscode.workspace.applyEdit as jest.Mock).mock.calls[0][0];
+    expect(applied.replacement).toBe('');
+    expect(statuses[statuses.length - 1].phase).toBe('applied');
+  });
+
+  it('keeps the earlier proposal when a revision fails', async () => {
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    agentTurn.mockRejectedValue(new Error('Rate limited.'));
+    await preview.revise(review.id, 'Use a table-driven test');
+    const after = statuses[statuses.length - 1];
+    expect(after).toMatchObject({ phase: 'review', revising: false, files: review.files });
+    expect(after.steps?.[after.steps.length - 1]).toMatchObject({ kind: 'request', ok: false, detail: 'Rate limited.' });
+    expect(after.message).toMatch(/previous proposal is still here/);
+    await preview.apply(review.id);
+    expect(text).toBe(proposed);
+  });
+
+  it('rejects an empty instruction without calling the model', async () => {
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    const calls = agentTurn.mock.calls.length;
+    await preview.revise(review.id, '   ');
+    expect(agentTurn.mock.calls.length).toBe(calls);
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'review', files: review.files });
+  });
+
+  it('cancel during a revision stops it and keeps the earlier proposal', async () => {
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    let release!: (turn: AssistantTurn) => void;
+    agentTurn.mockImplementation(() => new Promise<AssistantTurn>(resolve => { release = resolve; }));
+    const running = preview.revise(review.id, 'Rename the test');
+    await new Promise(resolve => setImmediate(resolve));
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'running', revising: true });
+    preview.discard(review.id);
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'review', revising: false, files: review.files });
+    release(call('discard_edit', { filePath: target }));
+    await running;
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'review', files: review.files });
+    await preview.apply(review.id);
+    expect(text).toBe(proposed);
+  });
+
+  it('cannot revise after the proposal is discarded or applied', async () => {
+    await preview.start(ticket);
+    const review = statuses[statuses.length - 1];
+    preview.discard(review.id);
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'done', canRevise: false });
+    const calls = agentTurn.mock.calls.length;
+    await preview.revise(review.id, 'Add another test');
+    expect(agentTurn.mock.calls.length).toBe(calls);
+
+    await preview.start(ticket);
+    const second = statuses[statuses.length - 1];
+    await preview.apply(second.id);
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'applied', canRevise: false });
+    await preview.revise(second.id, 'Add another test');
+    expect(statuses[statuses.length - 1].phase).toBe('applied');
   });
 
   it('stops a model repeatedly proposing an unread file', async () => {

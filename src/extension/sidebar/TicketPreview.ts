@@ -4,10 +4,10 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { OpenAIClient } from '../clients/OpenAIClient';
 import { CodeAnalyzer } from '../engine/CodeAnalyzer';
-import { proposeTicketChange, TicketEdit } from '../engine/TicketAgent';
+import { AgentSession, proposeTicketChange, reviseTicketChange, TicketEdit, TicketProposal } from '../engine/TicketAgent';
 import { runProjectTests } from '../engine/projectTests';
 import { walkWorkspace } from '../utils/fileWalker';
-import { ProjectTestResult, TicketAgentStatus, TicketData } from '../types';
+import { AgentStep, ProjectTestResult, TicketAgentStatus, TicketData } from '../types';
 import { getWorkspaceRoot } from '../utils/editorNavigation';
 
 async function existingFile(root: string, relative: string): Promise<vscode.Uri> {
@@ -45,6 +45,8 @@ async function newTestUri(root: string, relative: string): Promise<vscode.Uri> {
   return vscode.Uri.file(path.join(root, relative));
 }
 
+const MAX_STEPS = 200;
+
 async function readTarget(root: string, filePath: string) {
   const uri = await existingFile(root, filePath);
   const doc = await vscode.workspace.openTextDocument(uri);
@@ -62,6 +64,11 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
   private references = new Map<string, string>();
   private root?: string;
   private testRun?: AbortController;
+  private session?: AgentSession;
+  /** Bumped on each revision so open diff tabs never show a stale snapshot. */
+  private revision = 0;
+  /** Set while a revision runs; cancelling restores the proposal it started from. */
+  private revisionRun?: { cancelled: boolean; restore: () => void };
 
   constructor(
     private readonly client: Pick<OpenAIClient, 'agentTurn'>,
@@ -81,12 +88,62 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
     this.edits = [];
     this.references.clear();
     this.root = undefined;
+    this.session = undefined;
+    if (this.revisionRun) this.revisionRun.cancelled = true;
+    this.revisionRun = undefined;
   }
 
   private update(phase: TicketAgentStatus['phase'], message: string, testResult?: ProjectTestResult) {
     if (!this.status) return;
     this.status = { ...this.status, phase, message, testResult };
     this.notify(this.status);
+  }
+
+  private addStep(step: AgentStep) {
+    if (!this.status) return;
+    const steps = [...(this.status.steps ?? []), step].slice(-MAX_STEPS);
+    this.status = { ...this.status, steps };
+    this.notify(this.status);
+  }
+
+  private workspace(id: string, root: string, run?: { cancelled: boolean }) {
+    const paths = walkWorkspace(root).map(file => file.relativePath);
+    const checkActive = () => {
+      this.check(id);
+      if (run?.cancelled) throw new Error('Revision stopped.');
+    };
+    return {
+      checkActive,
+      search: (query: string) => this.analyzer.search(query, 5, root),
+      list: (query: string) => paths.filter(p => p.toLowerCase().includes(query.toLowerCase())).slice(0, 100),
+      checkNewFile: async (file: string) => { await newTestUri(root, file); },
+      read: async (file: string) => (await readTarget(root, file)).getText(),
+      progress: (message: string) => {
+        checkActive();
+        this.update('running', message);
+      },
+      step: (step: AgentStep) => {
+        checkActive();
+        this.addStep(step);
+      },
+    };
+  }
+
+  /** Show a finished proposal: review its files, or report that nothing needs to change. */
+  private async present(id: string, proposal: TicketProposal) {
+    this.check(id);
+    this.session = proposal.session;
+    this.references = proposal.references;
+    this.edits = proposal.edits;
+    this.revision++;
+    this.status = { ...this.status!, existingTest: proposal.existingTest, coverage: proposal.coverage, canRevise: true, revising: false,
+      files: proposal.edits.map(({ filePath, isNew, purpose }) => ({ filePath, isNew, purpose })) };
+    if (!proposal.edits.length) {
+      this.update('done', 'No changes proposed. ' + proposal.coverage);
+      return;
+    }
+    this.update('review', 'Review the files below before applying.');
+    await this.show(id, (this.edits.find(edit => edit.purpose === 'fix') ?? this.edits[0]).filePath);
   }
 
   private check(id: string) {
@@ -101,42 +158,59 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
     const id = randomUUID();
     const root = getWorkspaceRoot();
     this.root = root;
-    this.status = { id, ticketKey: ticket.key, phase: 'running', message: '' };
+    this.status = { id, ticketKey: ticket.key, phase: 'running', message: '', steps: [] };
     this.update('running', 'Indexing the workspace…');
     try {
       if (!root) throw new Error('Open a workspace folder first.');
       await this.analyzer.indexWorkspace(root);
       this.check(id);
-      const paths = walkWorkspace(root).map(file => file.relativePath);
-      const proposal = await proposeTicketChange(this.client, ticket, {
-        checkActive: () => this.check(id),
-        search: query => this.analyzer.search(query, 5, root),
-        list: query => paths.filter(p => p.toLowerCase().includes(query.toLowerCase())).slice(0, 100),
-        checkNewFile: async file => { await newTestUri(root, file); },
-        read: async file => (await readTarget(root, file)).getText(),
-        progress: message => {
-          this.check(id);
-          this.update('running', message);
-        },
-      });
-      this.check(id);
-      this.references = proposal.references;
-      this.status = { ...this.status, existingTest: proposal.existingTest, coverage: proposal.coverage,
-        files: proposal.edits.map(({ filePath, isNew, purpose }) => ({ filePath, isNew, purpose })) };
-      if (!proposal.edits.length) {
-        this.update('done', 'No changes proposed. ' + proposal.coverage);
-        return;
-      }
-      this.edits = proposal.edits;
-      this.update('review', 'Review the files below before applying.');
-      await this.show(id, (this.edits.find(edit => edit.purpose === 'fix') ?? this.edits[0]).filePath);
+      this.addStep({ kind: 'index', label: 'Indexed the workspace', ok: true });
+      const proposal = await proposeTicketChange(this.client, ticket, this.workspace(id, root));
+      await this.present(id, proposal);
     } catch (err) {
       if (this.status?.id === id) this.update('error', (err as Error).message);
     }
   }
 
-  private snapshotUri(id: string, filePath: string, side: 'before' | 'after') {
-    return vscode.Uri.from({ scheme: this.scheme, path: '/' + filePath, query: id + '/' + side });
+  /**
+   * Ask the agent to change its finished proposal. On failure the previous proposal stays
+   * in place, so the developer can still apply, discard or try another instruction.
+   */
+  async revise(id: string, instruction: string) {
+    const status = this.status;
+    if (status?.id !== id || !this.session || !this.root || this.testRun ||
+        (status.phase !== 'review' && status.phase !== 'done') || typeof instruction !== 'string') return;
+    const previous = { phase: status.phase, message: status.message };
+    const root = this.root;
+    const run = {
+      cancelled: false,
+      restore: () => {
+        this.status = { ...this.status!, revising: false };
+        this.update(previous.phase, previous.message);
+      },
+    };
+    this.revisionRun = run;
+    this.addStep({ kind: 'request', label: 'You asked: ' + instruction.trim().slice(0, 300), ok: true });
+    this.status = { ...this.status!, revising: true };
+    this.update('running', 'Revising the proposal…');
+    try {
+      this.check(id);
+      const proposal = await reviseTicketChange(this.client, this.session, instruction, this.workspace(id, root, run));
+      if (run.cancelled) return;
+      await this.present(id, proposal);
+    } catch (err) {
+      if (this.status?.id !== id || run.cancelled) return;
+      this.addStep({ kind: 'request', label: 'Couldn’t revise the proposal', detail: (err as Error).message.slice(0, 200), ok: false });
+      this.status = { ...this.status, revising: false };
+      this.update(previous.phase, 'The revision didn’t finish: ' + (err as Error).message + ' The previous proposal is still here.');
+    } finally {
+      if (this.revisionRun === run) this.revisionRun = undefined;
+    }
+  }
+
+  /** Address of one side of the current proposal's diff for a file. */
+  snapshotUri(id: string, filePath: string, side: 'before' | 'after') {
+    return vscode.Uri.from({ scheme: this.scheme, path: '/' + filePath, query: id + '/' + this.revision + '/' + side });
   }
 
   provideTextDocumentContent(uri: vscode.Uri): string {
@@ -163,6 +237,16 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
 
   discard(id: string) {
     if (this.status?.id !== id || this.status.phase === 'applying') return;
+    if (this.revisionRun) {
+      // Stop only the revision; the proposal it started from stays reviewable.
+      const run = this.revisionRun;
+      run.cancelled = true;
+      this.revisionRun = undefined;
+      this.addStep({ kind: 'request', label: 'Stopped the revision', ok: false });
+      run.restore();
+      return;
+    }
+    this.status = { ...this.status, canRevise: false, revising: false };
     this.update('done', 'Preview discarded.');
     this.reset();
   }
@@ -189,7 +273,11 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
         this.check(id);
         this.update('testing', 'Running ' + command + '…');
       });
-      if (this.status?.id === id) this.update('applied', result.summary, result);
+      if (this.status?.id === id) {
+        const label = result.command ? 'Ran ' + result.command : 'Looked for a test command';
+        this.addStep({ kind: 'test', label, detail: result.outcome, ok: result.outcome === 'passed' });
+        this.update('applied', result.summary, result);
+      }
     } catch (err) {
       if (this.status?.id === id) {
         this.update('applied', controller.signal.aborted ? 'Test run stopped.' : (err as Error).message);
@@ -235,7 +323,10 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
         if (this.status?.id !== id) return;
         await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: true });
       }
-      if (this.status?.id === id) this.update('applied', 'Applied the reviewed files. Use File → Save All, then Run tests.');
+      if (this.status?.id === id) {
+        this.status = { ...this.status, canRevise: false };
+        this.update('applied', 'Applied the reviewed files. Use File → Save All, then Run tests.');
+      }
     } catch (err) {
       if (this.status?.id === id) this.update('error', (err as Error).message);
     }

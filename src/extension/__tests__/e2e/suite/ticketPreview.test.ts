@@ -65,7 +65,7 @@ suite('Ticket fix and test review', () => {
       assert.strictEqual(first.phase, 'review', first.message);
       assert.deepStrictEqual(first.files?.map(file => file.filePath), [filename, testPath]);
       await preview.show(first.id, testPath);
-      const testSnapshot = vscode.Uri.from({ scheme: preview.scheme, path: '/' + testPath, query: first.id + '/after' });
+      const testSnapshot = preview.snapshotUri(first.id, testPath, 'after');
       const proposedTest = (await vscode.workspace.openTextDocument(testSnapshot)).getText();
       assert.strictEqual(proposedTest, testCode);
       preview.discard(first.id);

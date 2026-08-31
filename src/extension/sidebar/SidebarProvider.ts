@@ -97,6 +97,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           case 'reviewTicketChange':
             await this.ticketPreview.show(message.payload.id, message.payload.filePath);
             break;
+          case 'reviseTicketChange':
+            await this.ticketPreview.revise(message.payload.id, message.payload.instruction);
+            break;
           case 'discardTicketChange':
             this.ticketPreview.discard(message.payload.id);
             break;

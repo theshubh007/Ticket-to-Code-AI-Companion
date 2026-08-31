@@ -3,12 +3,14 @@ import type { ProposalFile, TicketAgentStatus } from '../../../extension/types';
 import { postMessage } from '../../vscodeApi';
 import { Icon, IconName } from '../shared/Icon';
 import { ActivityIndicator, Button, Disclosure, Note } from '../shared/ui';
+import { ActivityList, AgentActivity, ChangeRequest, RevisionNotice } from './AgentActivity';
 
 const STEPS = ['Propose', 'Review', 'Apply', 'Test'] as const;
 
 /** Index of the current step, and whether the whole flow has finished. */
 function stepState(agent: TicketAgentStatus | null): { current: number; complete: boolean } {
   switch (agent?.phase) {
+    case 'running': return { current: agent.revising ? 1 : 0, complete: false };
     case 'review': return { current: 1, complete: false };
     case 'applying': return { current: 2, complete: false };
     case 'applied': return { current: 3, complete: agent.testResult?.outcome === 'passed' };
@@ -127,12 +129,17 @@ export function ProposalCard({ ticketKey, agent }: { ticketKey: string; agent: T
       <div className="card-body" aria-live="polite">
         {(!agent || phase === 'done') && (
           <>
+            <RevisionNotice steps={agent?.steps} />
             {agent?.message && <Note tone="info">{agent.message}</Note>}
-            <p className="card-text">
-              The assistant reads the related code and tests, then proposes a fix with any missing tests.
-              Nothing in your project changes until you apply it.
-            </p>
-            <Button variant="primary" block icon="sparkle" onClick={propose}>
+            {agent?.canRevise ? (
+              <ChangeRequest agent={agent} placeholder="Ask for a change, like “add a test anyway”" />
+            ) : (
+              <p className="card-text">
+                The assistant reads the related code and tests, then proposes a fix with any missing tests.
+                Nothing in your project changes until you apply it.
+              </p>
+            )}
+            <Button variant={agent?.canRevise ? 'secondary' : 'primary'} block icon="sparkle" onClick={propose}>
               {agent ? 'Propose again' : 'Propose fix and tests'}
             </Button>
           </>
@@ -144,17 +151,20 @@ export function ProposalCard({ ticketKey, agent }: { ticketKey: string; agent: T
               <ActivityIndicator size={12} />
               <span>{agent!.message || 'Starting…'}</span>
             </p>
+            {!!agent!.steps?.length && <ActivityList steps={agent!.steps} live />}
             <Button variant="secondary" block onClick={() => postMessage('discardTicketChange', { id: agent!.id })}>
-              Cancel
+              {agent!.revising ? 'Stop revising' : 'Cancel'}
             </Button>
           </>
         )}
 
         {phase === 'review' && (
           <>
+            <RevisionNotice steps={agent!.steps} />
             {agent!.coverage && <p className="card-text">{agent!.coverage}</p>}
             <FileList agent={agent!} interactive />
             <p className="card-footnote">Select a file to open its diff. Your files stay untouched until you apply.</p>
+            {agent!.canRevise && <ChangeRequest agent={agent!} placeholder="Ask for changes…" />}
             <div className="stack">
               <Button variant="primary" block icon="check" onClick={() => postMessage('applyTicketChange', { id: agent!.id })}>
                 Apply {agent!.files?.length === 1 ? 'change' : `${agent!.files?.length ?? ''} changes`}
@@ -214,6 +224,8 @@ export function ProposalCard({ ticketKey, agent }: { ticketKey: string; agent: T
             Open existing test in {splitPath(agent.existingTest.filePath).name}
           </Button>
         )}
+
+        {phase && phase !== 'running' && <AgentActivity steps={agent!.steps} defaultOpen={phase === 'error'} />}
       </div>
     </section>
   );

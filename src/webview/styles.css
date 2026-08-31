@@ -1151,6 +1151,181 @@ button.file-row:focus-visible {
   overflow-wrap: normal;
 }
 
+/* Agent activity timeline */
+
+.timeline {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-caption);
+  line-height: 1.4;
+}
+
+.timeline--live {
+  max-height: 9.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 0;
+  /* Older steps fade toward the top while the newest stays crisp. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+}
+
+.card .disclosure .timeline {
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.timeline-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  padding: 3px 0;
+  color: var(--c-text-2);
+}
+
+/* A hairline joins each step to the next one. */
+.timeline-step + .timeline-step::before {
+  content: '';
+  position: absolute;
+  left: 8.5px;
+  top: -5px;
+  height: 8px;
+  border-left: 1px solid var(--c-separator);
+}
+
+.timeline-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--c-fill-2);
+  color: var(--c-text-2);
+  border: 1px solid var(--c-hc-border);
+}
+
+.timeline-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.timeline-label {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-detail {
+  color: var(--c-text-3);
+  overflow-wrap: anywhere;
+}
+
+.timeline--live .timeline-step:last-child {
+  color: var(--c-text);
+}
+
+.timeline--live .timeline-step:last-child .timeline-icon {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.45; }
+}
+
+.timeline-step--request {
+  color: var(--c-text);
+}
+
+.timeline-step--request .timeline-icon {
+  color: var(--vscode-button-foreground);
+  background: var(--c-accent);
+}
+
+.timeline-step--request .timeline-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.timeline-step--failed .timeline-icon {
+  color: var(--tone-yellow);
+  background: color-mix(in srgb, var(--tone-yellow) 16%, transparent);
+}
+
+.timeline-step--failed .timeline-detail {
+  flex-basis: 100%;
+}
+
+/* Change request composer */
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-l);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--c-separator));
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+
+.composer:focus-within {
+  border-color: var(--c-focus);
+  box-shadow: 0 0 0 1px var(--c-focus);
+}
+
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 22px;
+  padding: 3px 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--vscode-input-foreground);
+  font: inherit;
+  font-size: var(--text-footnote);
+  line-height: 16px;
+}
+
+.composer textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--c-text-2));
+}
+
+.composer-send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--vscode-button-foreground);
+  background: var(--c-accent);
+  border: 1px solid var(--c-hc-border);
+  transition: opacity var(--dur-fast), transform var(--dur-fast);
+}
+
+.composer-send:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground, var(--c-accent));
+}
+
+.composer-send:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.composer-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* ─── Disclosure ──────────────────────────────────────────────────── */
 
 .disclosure-header {

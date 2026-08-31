@@ -82,6 +82,7 @@ export interface ModelSummary {
 export type MessageFromWebview =
   | { command: 'previewTicket'; payload: { key: string } }
   | { command: 'reviewTicketChange'; payload: { id: string; filePath: string } }
+  | { command: 'reviseTicketChange'; payload: { id: string; instruction: string } }
   | { command: 'applyTicketChange' | 'discardTicketChange' | 'runTicketTests' | 'stopTicketTests'; payload: { id: string } }
   | { command: 'clearTicket' }
   | { command: 'ping' }
@@ -140,8 +141,22 @@ export interface ProposalFile {
   isNew: boolean;
 }
 
+/** One visible action in a proposal run, shown as a timeline in the ticket card. */
+export interface AgentStep {
+  kind: 'index' | 'search' | 'list' | 'read' | 'edit' | 'discard' | 'finish' | 'request' | 'test';
+  label: string;
+  detail?: string;
+  /** false when the action failed; the agent usually corrects itself on the next turn. */
+  ok: boolean;
+}
+
 export interface TicketAgentStatus {
   files?: ProposalFile[];
+  steps?: AgentStep[];
+  /** True once a finished proposal can be revised with an instruction. */
+  canRevise?: boolean;
+  /** True while the agent is revising a finished proposal; Cancel then keeps the earlier proposal. */
+  revising?: boolean;
   coverage?: string;
   existingTest?: { filePath: string; startLine: number; endLine: number };
   testResult?: ProjectTestResult;
