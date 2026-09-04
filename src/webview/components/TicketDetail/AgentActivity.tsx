@@ -14,6 +14,7 @@ const KIND_ICON: Record<AgentStep['kind'], IconName> = {
   finish: 'checkCircle',
   request: 'message',
   test: 'flask',
+  repair: 'wrench',
 };
 
 /** The agent's actions in order, newest last. While `live`, it follows the newest step. */
@@ -56,14 +57,15 @@ export function AgentActivity({ steps, defaultOpen = false }: { steps?: AgentSte
   );
 }
 
-/** A warning when the developer's last request didn't produce a new proposal. */
-export function RevisionNotice({ steps }: { steps?: AgentStep[] }) {
+/** A warning when the last revision or repair didn't produce a new proposal. */
+export function RevisionNotice({ agent }: { agent: TicketAgentStatus | null }) {
+  const steps = agent?.steps;
   const last = steps?.[steps.length - 1];
   if (!last || last.kind !== 'request' || last.ok) return null;
-  const stopped = !last.detail;
+  const unchanged = agent?.phase === 'applied' ? 'Your applied changes are unchanged.' : 'The earlier proposal is unchanged.';
   return (
-    <Note tone="warning" title={stopped ? 'Revision stopped' : 'The revision didn’t finish'}>
-      {stopped ? '' : last.detail + ' '}The earlier proposal is unchanged.
+    <Note tone="warning" title={last.label}>
+      {last.detail ? last.detail + ' ' : ''}{unchanged}
     </Note>
   );
 }
@@ -71,7 +73,12 @@ export function RevisionNotice({ steps }: { steps?: AgentStep[] }) {
 const MAX_LENGTH = 2000;
 
 /** A Claude-style composer that sends the developer's instruction back to the agent. */
-export function ChangeRequest({ agent, placeholder }: { agent: TicketAgentStatus; placeholder: string }) {
+export function ChangeRequest({ agent, placeholder, command = 'reviseTicketChange' }: {
+  agent: TicketAgentStatus;
+  placeholder: string;
+  /** Where the instruction goes: a change to the proposal, or a repair of failing tests. */
+  command?: 'reviseTicketChange' | 'fixTicketTests';
+}) {
   const [text, setText] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -86,7 +93,7 @@ export function ChangeRequest({ agent, placeholder }: { agent: TicketAgentStatus
   const trimmed = text.trim();
   function send() {
     if (!trimmed) return;
-    postMessage('reviseTicketChange', { id: agent.id, instruction: trimmed });
+    postMessage(command, { id: agent.id, instruction: trimmed });
     setText('');
   }
 

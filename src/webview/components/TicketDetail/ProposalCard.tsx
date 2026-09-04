@@ -100,15 +100,58 @@ function TestResult({ agent }: { agent: TicketAgentStatus }) {
     return <Note tone="info">{agent.message}</Note>;
   }
   const tone = result.outcome === 'passed' ? 'success' : result.outcome === 'failed' ? 'error' : 'warning';
+  // With a fix on offer, the output stays one click away so the action stays in view.
+  const exhausted = !!agent.repair && agent.repair.attempt >= agent.repair.max;
   return (
     <>
       <Note tone={tone} title={agent.message}>
         {result.command && <code className="command">{result.command}</code>}
       </Note>
       {result.output && (
-        <Disclosure title="Test output" icon="list" defaultOpen={result.outcome === 'failed'}>
+        <Disclosure title="Test output" icon="list" defaultOpen={result.outcome === 'failed' && (!agent.canFix || exhausted)}>
           <pre className="console" aria-label="Test output" tabIndex={0}>{result.output}</pre>
         </Disclosure>
+      )}
+    </>
+  );
+}
+
+/** After Apply: the applied files, the latest test result, and what to do about a failure. */
+function AppliedBody({ agent }: { agent: TicketAgentStatus }) {
+  const outcome = agent.testResult?.outcome;
+  const canFix = outcome === 'failed' && agent.canFix;
+  const repair = agent.repair;
+  const exhausted = !!repair && repair.attempt >= repair.max;
+  const runTests = () => postMessage('runTicketTests', { id: agent.id });
+  return (
+    <>
+      <FileList agent={agent} interactive={false} />
+      <RevisionNotice agent={agent} />
+      <TestResult agent={agent} />
+      {outcome === 'passed' && repair && (
+        <p className="card-footnote">
+          Passed after {repair.attempt} repair attempt{repair.attempt === 1 ? '' : 's'}.
+        </p>
+      )}
+      {canFix ? (
+        <>
+          {exhausted && (
+            <p className="card-text">
+              Tests still fail after {repair!.attempt} repair attempts. Check the output, or tell the agent what to try.
+            </p>
+          )}
+          <ChangeRequest agent={agent} command="fixTicketTests" placeholder="Tell the agent what to try…" />
+          <div className="stack">
+            <Button variant="primary" block icon="wrench" onClick={() => postMessage('fixTicketTests', { id: agent.id })}>
+              {exhausted ? 'Try another fix' : 'Fix failing tests'}
+            </Button>
+            <Button variant="secondary" block icon="play" onClick={runTests}>Run tests again</Button>
+          </div>
+        </>
+      ) : (
+        <Button variant={outcome === 'passed' ? 'secondary' : 'primary'} block icon="play" onClick={runTests}>
+          {agent.testResult ? 'Run tests again' : 'Run tests'}
+        </Button>
       )}
     </>
   );
@@ -129,7 +172,7 @@ export function ProposalCard({ ticketKey, agent }: { ticketKey: string; agent: T
       <div className="card-body" aria-live="polite">
         {(!agent || phase === 'done') && (
           <>
-            <RevisionNotice steps={agent?.steps} />
+            <RevisionNotice agent={agent} />
             {agent?.message && <Note tone="info">{agent.message}</Note>}
             {agent?.canRevise ? (
               <ChangeRequest agent={agent} placeholder="Ask for a change, like “add a test anyway”" />
@@ -153,14 +196,20 @@ export function ProposalCard({ ticketKey, agent }: { ticketKey: string; agent: T
             </p>
             {!!agent!.steps?.length && <ActivityList steps={agent!.steps} live />}
             <Button variant="secondary" block onClick={() => postMessage('discardTicketChange', { id: agent!.id })}>
-              {agent!.revising ? 'Stop revising' : 'Cancel'}
+              {agent!.revising === 'repair' ? 'Stop repair' : agent!.revising ? 'Stop revising' : 'Cancel'}
             </Button>
           </>
         )}
 
         {phase === 'review' && (
           <>
-            <RevisionNotice steps={agent!.steps} />
+            <RevisionNotice agent={agent} />
+            {agent!.repair && (
+              <p className="card-eyebrow">
+                <Icon name="wrench" size={12} />
+                Repair attempt {agent!.repair.attempt}{agent!.repair.attempt <= agent!.repair.max ? ` of ${agent!.repair.max}` : ''}
+              </p>
+            )}
             {agent!.coverage && <p className="card-text">{agent!.coverage}</p>}
             <FileList agent={agent!} interactive />
             <p className="card-footnote">Select a file to open its diff. Your files stay untouched until you apply.</p>
@@ -185,20 +234,7 @@ export function ProposalCard({ ticketKey, agent }: { ticketKey: string; agent: T
           </>
         )}
 
-        {phase === 'applied' && (
-          <>
-            <FileList agent={agent!} interactive={false} />
-            <TestResult agent={agent!} />
-            <Button
-              variant={agent!.testResult?.outcome === 'passed' ? 'secondary' : 'primary'}
-              block
-              icon="play"
-              onClick={() => postMessage('runTicketTests', { id: agent!.id })}
-            >
-              {agent!.testResult ? 'Run tests again' : 'Run tests'}
-            </Button>
-          </>
-        )}
+        {phase === 'applied' && <AppliedBody agent={agent!} />}
 
         {phase === 'testing' && (
           <>

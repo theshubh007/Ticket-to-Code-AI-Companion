@@ -6,7 +6,10 @@ import { AssistantTurn, AgentMessage } from '../../clients/OpenAIClient';
 import { CodeAnalyzer } from '../../engine/CodeAnalyzer';
 import { CacheManager } from '../../engine/CacheManager';
 import { OpenAIClient } from '../../clients/OpenAIClient';
-import { TicketPreview } from '../../sidebar/TicketPreview';
+import { AUTO_REPAIRS, TicketPreview } from '../../sidebar/TicketPreview';
+import { runProjectTests } from '../../engine/projectTests';
+
+jest.mock('../../engine/projectTests', () => ({ runProjectTests: jest.fn() }));
 import { TicketAgentStatus, TicketData } from '../../types';
 
 const ticket: TicketData = { key: 'DEMO-1', summary: 'Explain an empty list', description: '',
@@ -39,7 +42,8 @@ describe('ticket preview', () => {
     text = original;
     statuses = [];
     snapshots = [];
-    const doc = { uri: vscode.Uri.file(path.join(root, target)), getText: () => text, positionAt: (offset: number) => offset, isDirty: false };
+    const doc = { uri: vscode.Uri.file(path.join(root, target)), getText: () => text, positionAt: (offset: number) => offset, isDirty: false,
+      save: jest.fn(async () => { await fs.writeFile(path.join(root, target), text); return true; }) };
     Object.assign(vscode.workspace, {
       workspaceFolders: [{ uri: { fsPath: root } }],
       openTextDocument: async (uri: vscode.Uri) => uri.fsPath === doc.uri.fsPath ? doc : {
@@ -92,7 +96,8 @@ describe('ticket preview', () => {
     expect(text).toBe(original);
     await preview.apply(review.id);
     expect(text).toBe(proposed);
-    expect(await fs.readFile(path.join(root, target), 'utf8')).toBe(original);
+    // Apply saves exactly what was reviewed.
+    expect(await fs.readFile(path.join(root, target), 'utf8')).toBe(proposed);
   });
 
   it('uses the active workspace when cached paths and timestamps match another project', async () => {
@@ -240,7 +245,7 @@ describe('ticket preview', () => {
     expect(request).toBeDefined();
 
     const revised = statuses[statuses.length - 1];
-    expect(revised).toMatchObject({ id: review.id, phase: 'review', coverage: 'Tests only, as asked.', revising: false });
+    expect(revised).toMatchObject({ id: review.id, phase: 'review', coverage: 'Tests only, as asked.', revising: undefined });
     expect(revised.files?.map(file => file.filePath)).toEqual([testPath]);
     expect(revised.steps?.slice(-4).map(step => step.kind)).toEqual(['request', 'discard', 'edit', 'finish']);
     expect(revised.steps?.find(step => step.kind === 'request')?.label).toBe('You asked: Only add tests; leave list.ts alone.');
@@ -258,9 +263,9 @@ describe('ticket preview', () => {
     agentTurn.mockRejectedValue(new Error('Rate limited.'));
     await preview.revise(review.id, 'Use a table-driven test');
     const after = statuses[statuses.length - 1];
-    expect(after).toMatchObject({ phase: 'review', revising: false, files: review.files });
+    expect(after).toMatchObject({ phase: 'review', revising: undefined, files: review.files });
     expect(after.steps?.[after.steps.length - 1]).toMatchObject({ kind: 'request', ok: false, detail: 'Rate limited.' });
-    expect(after.message).toMatch(/previous proposal is still here/);
+    expect(after.message).toBe(review.message);
     await preview.apply(review.id);
     expect(text).toBe(proposed);
   });
@@ -281,9 +286,9 @@ describe('ticket preview', () => {
     agentTurn.mockImplementation(() => new Promise<AssistantTurn>(resolve => { release = resolve; }));
     const running = preview.revise(review.id, 'Rename the test');
     await new Promise(resolve => setImmediate(resolve));
-    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'running', revising: true });
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'running', revising: 'change' });
     preview.discard(review.id);
-    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'review', revising: false, files: review.files });
+    expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'review', revising: undefined, files: review.files });
     release(call('discard_edit', { filePath: target }));
     await running;
     expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'review', files: review.files });
@@ -306,6 +311,154 @@ describe('ticket preview', () => {
     expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'applied', canRevise: false });
     await preview.revise(second.id, 'Add another test');
     expect(statuses[statuses.length - 1].phase).toBe('applied');
+  });
+
+  describe('after Apply', () => {
+    const failed = { command: 'npm test', outcome: 'failed' as const, summary: '1 of 2 tests failed.', output: 'not ok 1 - explains an empty list' };
+    const passed = { command: 'npm test', outcome: 'passed' as const, summary: '2 tests passed.', output: 'ok' };
+    const repaired = "return items.length ? items : 'No items found';\r\n";
+    let results: object[];
+
+    beforeEach(() => {
+      Object.assign(vscode.workspace, { isTrusted: true });
+      results = [];
+      (runProjectTests as jest.Mock).mockReset().mockImplementation(async () => results.shift() ?? passed);
+      // The shared mock ignores created files; write them so the test run can find them.
+      type Edit = { replacement: string; created?: [vscode.Uri, Uint8Array][] };
+      jest.spyOn(vscode.WorkspaceEdit.prototype, 'createFile').mockImplementation(function (this: Edit, uri, options) {
+        (this.created ??= []).push([uri, options?.contents as Uint8Array]);
+      });
+      (vscode.workspace.applyEdit as jest.Mock).mockImplementation(async (edit: Edit) => {
+        if (edit.replacement) text = edit.replacement;
+        for (const [uri, contents] of edit.created ?? []) {
+          await fs.mkdir(path.dirname(uri.fsPath), { recursive: true });
+          await fs.writeFile(uri.fsPath, contents);
+        }
+        return true;
+      });
+    });
+    afterEach(() => {
+      Object.assign(vscode.workspace, { isTrusted: undefined });
+      jest.restoreAllMocks();
+    });
+
+    /** A repair turn: read the saved file, fix it, finish. */
+    function repairTurns(after = repaired) {
+      return [
+        call('read_file', { filePath: target }),
+        call('propose_edit', { filePath: target, before: proposed, after, purpose: 'fix' }),
+        call('finish_proposal', { implementationPath: target, testFilePath: testPath, assertion, coverage: 'Fixed the message.' }),
+      ];
+    }
+
+    it('saves the reviewed files and runs the tests', async () => {
+      await preview.start(ticket);
+      const review = statuses[statuses.length - 1];
+      await preview.apply(review.id);
+      expect(await fs.readFile(path.join(root, target), 'utf8')).toBe(proposed);
+      expect(runProjectTests).toHaveBeenCalledTimes(1);
+      const done = statuses[statuses.length - 1];
+      expect(done).toMatchObject({ phase: 'applied', testResult: passed, canFix: true, files: review.files });
+      expect(done.steps?.[done.steps.length - 1]).toMatchObject({ kind: 'test', ok: true, detail: 'passed' });
+    });
+
+    it('does not run tests in an untrusted workspace', async () => {
+      Object.assign(vscode.workspace, { isTrusted: false });
+      await preview.start(ticket);
+      await preview.apply(statuses[statuses.length - 1].id);
+      expect(runProjectTests).not.toHaveBeenCalled();
+      expect(statuses[statuses.length - 1].message).toMatch(/Trust this workspace/);
+    });
+
+    it('repairs failing tests on its own, reviews the repair, then passes', async () => {
+      results = [failed, passed];
+      await preview.start(ticket);
+      const review = statuses[statuses.length - 1];
+      let seen: AgentMessage[] = [];
+      const turns = repairTurns();
+      agentTurn.mockImplementation(async (messages: AgentMessage[]) => { seen = messages; return turns.shift(); });
+      await preview.apply(review.id);
+
+      const repair = statuses[statuses.length - 1];
+      expect(repair).toMatchObject({ id: review.id, phase: 'review', repair: { attempt: 1, max: AUTO_REPAIRS }, revising: undefined });
+      expect(repair.files?.map(file => file.filePath)).toEqual([target]);
+      // The repair diff starts from the saved, applied contents.
+      expect(snapshots).toEqual([proposed, repaired]);
+      const prompt = seen.find(m => m.role === 'user' && String(m.content).includes('repair attempt 1 of 3'));
+      expect(String(prompt?.content)).toContain('not ok 1 - explains an empty list');
+      expect(repair.steps?.some(step => step.kind === 'repair' && step.label.includes('attempt 1 of 3'))).toBe(true);
+
+      await preview.apply(review.id);
+      const done = statuses[statuses.length - 1];
+      expect(done).toMatchObject({ phase: 'applied', testResult: passed, repair: { attempt: 1 } });
+      expect(done.files?.map(file => file.filePath)).toEqual([target, testPath]);
+      expect(await fs.readFile(path.join(root, target), 'utf8')).toBe(repaired);
+    });
+
+    it('stops repairing on its own after three attempts', async () => {
+      results = [failed, failed, failed, failed];
+      await preview.start(ticket);
+      const id = statuses[statuses.length - 1].id;
+      const fixes = [repaired, proposed.replace('No items', 'Empty'), proposed.replace('No items', 'Nothing')];
+      let current = proposed;
+      for (const fix of fixes) {
+        const turns = repairTurns(fix).map((turn, i) => i === 1
+          ? call('propose_edit', { filePath: target, before: current, after: fix, purpose: 'fix' }) : turn);
+        agentTurn.mockImplementation(async () => turns.shift());
+        await preview.apply(id);
+        expect(statuses[statuses.length - 1].phase).toBe('review');
+        current = fix;
+      }
+      await preview.apply(id);
+      const last = statuses[statuses.length - 1];
+      expect(last).toMatchObject({ phase: 'applied', testResult: failed, canFix: true, repair: { attempt: 3, max: 3 } });
+      expect(runProjectTests).toHaveBeenCalledTimes(4);
+
+      // The developer can still ask for another attempt, with a hint.
+      let seen: AgentMessage[] = [];
+      agentTurn.mockImplementation(async (messages: AgentMessage[]) => { seen = messages; return repairTurns(current)[0]; });
+      agentTurn.mockImplementationOnce(async (messages: AgentMessage[]) => { seen = messages; throw new Error('Rate limited.'); });
+      await preview.fixTests(id, 'The test expects the exact text');
+      expect(String(seen[seen.length - 1].content)).toContain('The test expects the exact text');
+      expect(String(seen[seen.length - 1].content)).toContain('attempt 4 of 3');
+      const after = statuses[statuses.length - 1];
+      expect(after).toMatchObject({ phase: 'applied', testResult: failed });
+      expect(after.steps?.[after.steps.length - 1]).toMatchObject({ kind: 'request', ok: false, label: 'Couldn’t fix the failing tests' });
+    });
+
+    it('stopping a repair keeps the applied changes and the failed result', async () => {
+      results = [failed];
+      await preview.start(ticket);
+      const id = statuses[statuses.length - 1].id;
+      let release!: (turn: AssistantTurn) => void;
+      let started!: () => void;
+      const repairStarted = new Promise<void>(resolve => { started = resolve; });
+      agentTurn.mockImplementation(() => {
+        started();
+        return new Promise<AssistantTurn>(resolve => { release = resolve; });
+      });
+      const applying = preview.apply(id);
+      await repairStarted;
+      expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'running', revising: 'repair' });
+      preview.discard(id);
+      expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'applied', testResult: failed, revising: undefined });
+      expect(statuses[statuses.length - 1].steps?.slice(-1)[0]).toMatchObject({ label: 'Stopped the repair' });
+      release(call('read_file', { filePath: target }));
+      await applying;
+      expect(statuses[statuses.length - 1].phase).toBe('applied');
+      expect(await fs.readFile(path.join(root, target), 'utf8')).toBe(proposed);
+    });
+
+    it('does not repair automatically after a manual test run', async () => {
+      results = [passed, failed];
+      await preview.start(ticket);
+      const id = statuses[statuses.length - 1].id;
+      await preview.apply(id);
+      const calls = agentTurn.mock.calls.length;
+      await preview.runTests(id);
+      expect(statuses[statuses.length - 1]).toMatchObject({ phase: 'applied', testResult: failed, canFix: true });
+      expect(agentTurn.mock.calls.length).toBe(calls);
+    });
   });
 
   it('stops a model repeatedly proposing an unread file', async () => {

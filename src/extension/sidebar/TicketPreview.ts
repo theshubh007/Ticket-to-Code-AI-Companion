@@ -4,10 +4,10 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { OpenAIClient } from '../clients/OpenAIClient';
 import { CodeAnalyzer } from '../engine/CodeAnalyzer';
-import { AgentSession, proposeTicketChange, reviseTicketChange, TicketEdit, TicketProposal } from '../engine/TicketAgent';
+import { AgentSession, fixFailingTests, proposeTicketChange, reviseTicketChange, TicketEdit, TicketProposal } from '../engine/TicketAgent';
 import { runProjectTests } from '../engine/projectTests';
 import { walkWorkspace } from '../utils/fileWalker';
-import { AgentStep, ProjectTestResult, TicketAgentStatus, TicketData } from '../types';
+import { AgentStep, ProjectTestResult, ProposalFile, TicketAgentStatus, TicketData } from '../types';
 import { getWorkspaceRoot } from '../utils/editorNavigation';
 
 async function existingFile(root: string, relative: string): Promise<vscode.Uri> {
@@ -46,6 +46,8 @@ async function newTestUri(root: string, relative: string): Promise<vscode.Uri> {
 }
 
 const MAX_STEPS = 200;
+/** Repairs that start on their own after failing tests; the developer can ask for more. */
+export const AUTO_REPAIRS = 3;
 
 async function readTarget(root: string, filePath: string) {
   const uri = await existingFile(root, filePath);
@@ -67,8 +69,11 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
   private session?: AgentSession;
   /** Bumped on each revision so open diff tabs never show a stale snapshot. */
   private revision = 0;
-  /** Set while a revision runs; cancelling restores the proposal it started from. */
-  private revisionRun?: { cancelled: boolean; restore: () => void };
+  /** Set while a revision or repair runs; cancelling restores the state it started from. */
+  private revisionRun?: { cancelled: boolean; kind: 'change' | 'repair'; restore: () => void };
+  /** Every file written by Apply for this ticket, across repair attempts. */
+  private applied = new Map<string, ProposalFile>();
+  private repairs = 0;
 
   constructor(
     private readonly client: Pick<OpenAIClient, 'agentTurn'>,
@@ -89,6 +94,8 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
     this.references.clear();
     this.root = undefined;
     this.session = undefined;
+    this.applied.clear();
+    this.repairs = 0;
     if (this.revisionRun) this.revisionRun.cancelled = true;
     this.revisionRun = undefined;
   }
@@ -136,7 +143,8 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
     this.references = proposal.references;
     this.edits = proposal.edits;
     this.revision++;
-    this.status = { ...this.status!, existingTest: proposal.existingTest, coverage: proposal.coverage, canRevise: true, revising: false,
+    this.status = { ...this.status!, existingTest: proposal.existingTest, coverage: proposal.coverage, canRevise: true, revising: undefined,
+      canFix: false,
       files: proposal.edits.map(({ filePath, isNew, purpose }) => ({ filePath, isNew, purpose })) };
     if (!proposal.edits.length) {
       this.update('done', 'No changes proposed. ' + proposal.coverage);
@@ -178,31 +186,70 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
    */
   async revise(id: string, instruction: string) {
     const status = this.status;
-    if (status?.id !== id || !this.session || !this.root || this.testRun ||
+    const session = this.session;
+    if (status?.id !== id || !session || !this.root || this.testRun || this.revisionRun ||
         (status.phase !== 'review' && status.phase !== 'done') || typeof instruction !== 'string') return;
-    const previous = { phase: status.phase, message: status.message };
+    this.addStep({ kind: 'request', label: 'You asked: ' + instruction.trim().slice(0, 300), ok: true });
+    await this.continueProposal(id, 'change', 'Revising the proposal…',
+      workspace => reviseTicketChange(this.client, session, instruction, workspace));
+  }
+
+  /**
+   * Ask the agent to repair applied changes whose tests failed. The repair is a new proposal on top
+   * of the saved files, so it goes through review and Apply like the first one.
+   */
+  async fixTests(id: string, instruction: string, automatic = false) {
+    const status = this.status;
+    const session = this.session;
     const root = this.root;
+    if (status?.id !== id || !session || !root || this.testRun || this.revisionRun || status.phase !== 'applied' ||
+        status.testResult?.outcome !== 'failed' || typeof instruction !== 'string') return;
+    const failure = status.testResult;
+    const attempt = this.repairs + 1;
+    const of = attempt <= AUTO_REPAIRS ? ` of ${AUTO_REPAIRS}` : '';
+    this.addStep({ kind: 'repair', ok: true, label: automatic
+      ? `Tests failed, so the agent is fixing them (attempt ${attempt}${of})`
+      : `Asked the agent to fix the failing tests (attempt ${attempt}${of})` });
+    if (instruction.trim()) this.addStep({ kind: 'request', label: 'You asked: ' + instruction.trim().slice(0, 300), ok: true });
+    await this.continueProposal(id, 'repair', `Fixing the failing tests (attempt ${attempt}${of})…`, async workspace => {
+      // The saved files are the new baseline; an unsaved edit would make the next diff misleading.
+      const current = new Map<string, string>();
+      for (const filePath of this.applied.keys()) current.set(filePath, (await readTarget(root, filePath)).getText());
+      this.repairs = attempt;
+      this.status = { ...this.status!, repair: { attempt, max: AUTO_REPAIRS } };
+      return fixFailingTests(this.client, session, current,
+        { command: failure.command, output: failure.output, attempt, maxAttempts: AUTO_REPAIRS }, instruction, workspace);
+    });
+  }
+
+  /** Run the agent again from a finished session; on failure or Cancel, return to where it started. */
+  private async continueProposal(
+    id: string, kind: 'change' | 'repair', message: string,
+    work: (workspace: ReturnType<TicketPreview['workspace']>) => Promise<TicketProposal>
+  ) {
+    const status = this.status!;
+    const previous = { phase: status.phase, message: status.message, testResult: status.testResult };
     const run = {
       cancelled: false,
+      kind,
       restore: () => {
-        this.status = { ...this.status!, revising: false };
-        this.update(previous.phase, previous.message);
+        this.status = { ...this.status!, revising: undefined };
+        this.update(previous.phase, previous.message, previous.testResult);
       },
     };
     this.revisionRun = run;
-    this.addStep({ kind: 'request', label: 'You asked: ' + instruction.trim().slice(0, 300), ok: true });
-    this.status = { ...this.status!, revising: true };
-    this.update('running', 'Revising the proposal…');
+    this.status = { ...status, revising: kind };
+    this.update('running', message);
     try {
       this.check(id);
-      const proposal = await reviseTicketChange(this.client, this.session, instruction, this.workspace(id, root, run));
+      const proposal = await work(this.workspace(id, this.root!, run));
       if (run.cancelled) return;
       await this.present(id, proposal);
     } catch (err) {
       if (this.status?.id !== id || run.cancelled) return;
-      this.addStep({ kind: 'request', label: 'Couldn’t revise the proposal', detail: (err as Error).message.slice(0, 200), ok: false });
-      this.status = { ...this.status, revising: false };
-      this.update(previous.phase, 'The revision didn’t finish: ' + (err as Error).message + ' The previous proposal is still here.');
+      this.addStep({ kind: 'request', ok: false, detail: (err as Error).message.slice(0, 300),
+        label: kind === 'repair' ? 'Couldn’t fix the failing tests' : 'Couldn’t revise the proposal' });
+      run.restore();
     } finally {
       if (this.revisionRun === run) this.revisionRun = undefined;
     }
@@ -242,11 +289,11 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
       const run = this.revisionRun;
       run.cancelled = true;
       this.revisionRun = undefined;
-      this.addStep({ kind: 'request', label: 'Stopped the revision', ok: false });
+      this.addStep({ kind: 'request', label: run.kind === 'repair' ? 'Stopped the repair' : 'Stopped the revision', ok: false });
       run.restore();
       return;
     }
-    this.status = { ...this.status, canRevise: false, revising: false };
+    this.status = { ...this.status, canRevise: false, canFix: false, revising: undefined };
     this.update('done', 'Preview discarded.');
     this.reset();
   }
@@ -255,8 +302,9 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
     if (this.status?.id === id) this.testRun?.abort();
   }
 
-  async runTests(id: string) {
-    if (this.status?.id !== id || this.status.phase !== 'applied' || !this.root) return;
+  /** Run the project tests on the saved files. After an Apply, a failure starts a repair on its own. */
+  async runTests(id: string, afterApply = false) {
+    if (this.status?.id !== id || this.status.phase !== 'applied' || !this.root || this.testRun) return;
     const controller = new AbortController();
     this.testRun = controller;
     this.update('testing', 'Checking the saved files…');
@@ -264,10 +312,11 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
       this.check(id);
       if (!vscode.workspace.isTrusted) throw new Error('Trust this workspace in VS Code to run its tests.');
       const root = this.root;
-      const documents = await Promise.all(this.edits.map(async edit =>
-        vscode.workspace.openTextDocument(await existingFile(root, edit.filePath))));
+      const files = [...this.applied.keys()];
+      const documents = await Promise.all(files.map(async file =>
+        vscode.workspace.openTextDocument(await existingFile(root, file))));
       const dirty = documents.findIndex(doc => doc.isDirty);
-      if (dirty !== -1) throw new Error('Save ' + this.edits[dirty].filePath + ' (File → Save All) and click Run tests again.');
+      if (dirty !== -1) throw new Error('Save ' + files[dirty] + ' (File → Save All) and click Run tests again.');
       this.check(id);
       const result = await runProjectTests(root, controller.signal, command => {
         this.check(id);
@@ -277,6 +326,10 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
         const label = result.command ? 'Ran ' + result.command : 'Looked for a test command';
         this.addStep({ kind: 'test', label, detail: result.outcome, ok: result.outcome === 'passed' });
         this.update('applied', result.summary, result);
+        if (result.outcome === 'failed' && afterApply && this.repairs < AUTO_REPAIRS) {
+          if (this.testRun === controller) this.testRun = undefined;
+          await this.fixTests(id, '', true);
+        }
       }
     } catch (err) {
       if (this.status?.id === id) {
@@ -318,15 +371,23 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
       if (!await vscode.workspace.applyEdit(edit)) {
         throw new Error('VS Code could not finish applying the proposal. Review the workspace changes before retrying.');
       }
-      // Keep every dirty buffer in the editor group so File → Save All includes it.
-      for (const { doc } of existing) {
-        if (this.status?.id !== id) return;
-        await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: true });
+      for (const change of this.edits) {
+        if (!this.applied.has(change.filePath)) {
+          this.applied.set(change.filePath, { filePath: change.filePath, purpose: change.purpose, isNew: change.isNew });
+        }
       }
-      if (this.status?.id === id) {
-        this.status = { ...this.status, canRevise: false };
-        this.update('applied', 'Applied the reviewed files. Use File → Save All, then Run tests.');
+      // The developer approved these exact contents, so save them for the test run.
+      for (const { doc, change } of existing) {
+        if (!await doc.save()) throw new Error('Applied the changes, but VS Code could not save ' + change.filePath + '. Save it, then Run tests.');
       }
+      if (this.status?.id !== id) return;
+      this.status = { ...this.status, canRevise: false, canFix: true, files: [...this.applied.values()] };
+      if (!vscode.workspace.isTrusted) {
+        this.update('applied', 'Applied and saved the reviewed files. Trust this workspace in VS Code to run its tests.');
+        return;
+      }
+      this.update('applied', 'Applied and saved the reviewed files.');
+      await this.runTests(id, true);
     } catch (err) {
       if (this.status?.id === id) this.update('error', (err as Error).message);
     }

@@ -84,6 +84,7 @@ export type MessageFromWebview =
   | { command: 'reviewTicketChange'; payload: { id: string; filePath: string } }
   | { command: 'reviseTicketChange'; payload: { id: string; instruction: string } }
   | { command: 'applyTicketChange' | 'discardTicketChange' | 'runTicketTests' | 'stopTicketTests'; payload: { id: string } }
+  | { command: 'fixTicketTests'; payload: { id: string; instruction?: string } }
   | { command: 'clearTicket' }
   | { command: 'ping' }
   | { command: 'getAISettings' }
@@ -143,7 +144,7 @@ export interface ProposalFile {
 
 /** One visible action in a proposal run, shown as a timeline in the ticket card. */
 export interface AgentStep {
-  kind: 'index' | 'search' | 'list' | 'read' | 'edit' | 'discard' | 'finish' | 'request' | 'test';
+  kind: 'index' | 'search' | 'list' | 'read' | 'edit' | 'discard' | 'finish' | 'request' | 'test' | 'repair';
   label: string;
   detail?: string;
   /** false when the action failed; the agent usually corrects itself on the next turn. */
@@ -155,8 +156,15 @@ export interface TicketAgentStatus {
   steps?: AgentStep[];
   /** True once a finished proposal can be revised with an instruction. */
   canRevise?: boolean;
-  /** True while the agent is revising a finished proposal; Cancel then keeps the earlier proposal. */
-  revising?: boolean;
+  /**
+   * Set while the agent continues a finished proposal: a requested change, or a repair after failing
+   * tests. Cancel then stops only that run and keeps the earlier state.
+   */
+  revising?: 'change' | 'repair';
+  /** True after Apply while the agent can still be asked to fix failing tests. */
+  canFix?: boolean;
+  /** The latest repair attempt after failing tests, and how many run without asking. */
+  repair?: { attempt: number; max: number };
   coverage?: string;
   existingTest?: { filePath: string; startLine: number; endLine: number };
   testResult?: ProjectTestResult;

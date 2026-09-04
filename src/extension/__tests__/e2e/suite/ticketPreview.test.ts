@@ -11,13 +11,15 @@ import { TicketPreview } from '../../../sidebar/TicketPreview';
 import { TicketAgentStatus, TicketData } from '../../../types';
 
 suite('Ticket fix and test review', () => {
-  test('reviews and discards both files, then applies and runs the proposed regression test', async () => {
+  test('reviews and discards both files, then applies, runs the tests and repairs a failing fix', async () => {
     const root = vscode.workspace.workspaceFolders![0].uri.fsPath;
     const baseline = await fs.mkdtemp(path.join(os.tmpdir(), 'ticket-baseline-'));
     const filename = 'cache.cjs';
     const testPath = 'tests/expiry.test.cjs';
     const original = 'exports.expired = (start, ttl, now) => ttl > 0 && start + ttl < now;\n';
     const expected = original.replace('< now', '<= now');
+    // The first fix drops the zero-TTL guard, so the zero ttl test fails until the repair.
+    const broken = 'exports.expired = (start, ttl, now) => start + ttl <= now;\n';
     const assertion = 'assert.equal(expired(1000, 500, 1500), true)';
     const testCode = [
       "const test = require('node:test');",
@@ -41,9 +43,13 @@ suite('Ticket fix and test review', () => {
         ['list_files', { query: 'test' }],
         ['list_files', { query: 'package.json' }],
         ['read_file', { filePath: 'package.json' }],
-        ['propose_edit', { filePath: filename, purpose: 'fix', before: '< now', after: '<= now' }],
+        ['propose_edit', { filePath: filename, purpose: 'fix', before: 'ttl > 0 && start + ttl < now', after: 'start + ttl <= now' }],
         ['propose_test_file', { filePath: testPath, content: testCode }],
         ['finish_proposal', { implementationPath: filename, coverage: 'Checks all four expiry cases.', testFilePath: testPath, assertion }],
+        // Repair after the failing run, continuing the same conversation.
+        ['read_file', { filePath: filename }],
+        ['propose_edit', { filePath: filename, purpose: 'fix', before: 'start + ttl <= now', after: 'ttl > 0 && start + ttl <= now' }],
+        ['finish_proposal', { implementationPath: filename, coverage: 'Restores the zero-TTL guard.', testFilePath: testPath, assertion }],
       ];
       const last = messages[messages.length - 1];
       if (last.role === 'tool') assert.ok(!JSON.parse(last.content)?.error, last.content);
@@ -86,19 +92,29 @@ suite('Ticket fix and test review', () => {
       const second = latest();
       assert.strictEqual(second.phase, 'review', second.message);
       await preview.apply(second.id);
-      assert.strictEqual(latest().phase, 'applied', latest().message);
+
+      // Apply saved the files and ran the tests; the failure started a repair, now waiting for review.
+      assert.strictEqual(await fs.readFile(path.join(root, filename), 'utf8'), broken);
+      assert.strictEqual(await fs.readFile(path.join(root, testPath), 'utf8'), testCode);
+      const failedRun = statuses.find(status => status.testResult?.outcome === 'failed');
+      assert.ok(failedRun, 'expected a failing test run before the repair');
+      assert.match(failedRun.testResult!.output, /zero ttl/);
+      const repair = latest();
+      assert.strictEqual(repair.phase, 'review', repair.message);
+      assert.deepStrictEqual(repair.repair, { attempt: 1, max: 3 });
+      assert.deepStrictEqual(repair.files?.map(file => file.filePath), [filename]);
+      const repairDiff = preview.snapshotUri(repair.id, filename, 'before');
+      assert.strictEqual((await vscode.workspace.openTextDocument(repairDiff)).getText(), broken);
+
+      await preview.apply(repair.id);
+      const done = latest();
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, filename)));
       assert.strictEqual(doc.getText(), expected);
-      assert.strictEqual(await fs.readFile(path.join(root, testPath), 'utf8'), testCode);
-      if (doc.isDirty) {
-        await preview.runTests(second.id);
-        assert.match(latest().message, /Save cache.cjs/);
-      }
-      assert.ok(await vscode.workspace.saveAll());
-      await preview.runTests(second.id);
-      const green = latest().testResult;
-      assert.strictEqual(green?.outcome, 'passed', green?.output ?? latest().message);
+      assert.ok(!doc.isDirty);
+      const green = done.testResult;
+      assert.strictEqual(green?.outcome, 'passed', green?.output ?? done.message);
       for (const name of ['before expiry', 'at expiry', 'after expiry', 'zero ttl']) assert.ok(green.output.includes(name));
+      assert.deepStrictEqual(done.files?.map(file => file.filePath), [filename, testPath]);
     } finally {
       registration.dispose();
       await fs.rm(baseline, { recursive: true, force: true });

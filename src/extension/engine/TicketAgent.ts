@@ -94,15 +94,73 @@ export function reviseTicketChange(
   if (text.length > MAX_INSTRUCTION_LENGTH) {
     return Promise.reject(new Error(`Keep the request under ${MAX_INSTRUCTION_LENGTH} characters.`));
   }
-  return runAgent(client, {
-    messages: [...session.messages, { role: 'user', content: 'The developer reviewed the staged proposal and asks for this change: ' +
-      JSON.stringify(text) + '. Follow it unless it would break the ticket or weaken tests; if so, explain in finish_proposal coverage. ' +
-      'Update the staged edits (discard_edit drops a file), then call finish_proposal again in a separate turn.' }],
+  return runAgent(client, continueSession(session, 'The developer reviewed the staged proposal and asks for this change: ' +
+    JSON.stringify(text) + '. Follow it unless it would break the ticket or weaken tests; if so, explain in finish_proposal coverage. ' +
+    'Update the staged edits (discard_edit drops a file), then call finish_proposal again in a separate turn.'), workspace);
+}
+
+export const MAX_TEST_OUTPUT = 8000;
+
+export interface TestFailure {
+  command?: string;
+  output: string;
+  attempt: number;
+  maxAttempts: number;
+}
+
+/**
+ * Start a new proposal after the applied one failed its tests. `current` holds the applied files as
+ * they are on disk now; they become the new baseline, so the next diff shows only the repair.
+ */
+export function fixFailingTests(
+  client: Pick<OpenAIClient, 'agentTurn'>, session: AgentSession, current: Map<string, string>,
+  failure: TestFailure, instruction: string, workspace: AgentWorkspace
+): Promise<TicketProposal> {
+  const note = instruction.trim();
+  if (note.length > MAX_INSTRUCTION_LENGTH) {
+    return Promise.reject(new Error(`Keep the request under ${MAX_INSTRUCTION_LENGTH} characters.`));
+  }
+  const output = failure.output.length > MAX_TEST_OUTPUT
+    ? '[earlier output omitted]\n' + failure.output.slice(-MAX_TEST_OUTPUT) : failure.output;
+  const next = continueSession(session, [
+    `The developer applied your proposal and the project tests failed (repair attempt ${failure.attempt} of ${failure.maxAttempts}).`,
+    'Command: ' + JSON.stringify(failure.command ?? 'unknown') + '.',
+    'Test output: ' + JSON.stringify(output) + '.',
+    note ? 'The developer adds: ' + JSON.stringify(note) + '.' : '',
+    'Your applied changes are now the saved file contents, and nothing is staged. Find the cause of the failure.',
+    'Fix the implementation unless a test is genuinely wrong. Never delete, skip or weaken assertions to make tests pass.',
+    'If the failure is unrelated to this ticket, stage nothing and explain why in coverage.',
+    'Stage the repair, then call finish_proposal again in a separate turn.',
+  ].filter(Boolean).join(' '));
+  for (const [filePath, content] of current) {
+    next.snapshots.set(filePath, content);
+    next.candidates.add(filePath);
+  }
+  next.edits.clear();
+  return runAgent(client, next, workspace);
+}
+
+/** Old tool results longer than this are replaced with a note, so long sessions stay within context. */
+const KEEP_TOOL_RESULT = 1500;
+
+/**
+ * Copy a finished session and add the next instruction. The copy lets a failed or stopped run
+ * leave the earlier proposal untouched.
+ */
+function continueSession(session: AgentSession, instruction: string): AgentSession {
+  const messages = session.messages.map(message => (
+    message.role === 'tool' && message.content.length > KEEP_TOOL_RESULT
+      ? { ...message, content: JSON.stringify('Earlier result omitted to save space. Call the tool again if you need it.') }
+      : message
+  ));
+  messages.push({ role: 'user', content: instruction });
+  return {
+    messages,
     candidates: new Set(session.candidates),
     snapshots: new Map(session.snapshots),
     edits: new Map(session.edits),
     inspectedLayout: session.inspectedLayout,
-  }, workspace);
+  };
 }
 
 async function runAgent(
