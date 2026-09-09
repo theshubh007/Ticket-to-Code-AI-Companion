@@ -4,8 +4,9 @@ import { postMessage } from '../../vscodeApi';
 import { Icon, IconName } from '../shared/Icon';
 import { ActivityIndicator, Button, Disclosure, Note } from '../shared/ui';
 import { ActivityList, AgentActivity, ChangeRequest, RevisionNotice } from './AgentActivity';
+import { PullRequestSection } from './PullRequestSection';
 
-const STEPS = ['Propose', 'Review', 'Apply', 'Test'] as const;
+const STEPS = ['Propose', 'Review', 'Apply', 'Test', 'PR'] as const;
 
 /** Index of the current step, and whether the whole flow has finished. */
 function stepState(agent: TicketAgentStatus | null): { current: number; complete: boolean } {
@@ -13,7 +14,9 @@ function stepState(agent: TicketAgentStatus | null): { current: number; complete
     case 'running': return { current: agent.revising ? 1 : 0, complete: false };
     case 'review': return { current: 1, complete: false };
     case 'applying': return { current: 2, complete: false };
-    case 'applied': return { current: 3, complete: agent.testResult?.outcome === 'passed' };
+    case 'applied':
+      if (agent.pr?.phase === 'created') return { current: 4, complete: true };
+      return { current: agent.testResult?.outcome === 'passed' || agent.pr ? 4 : 3, complete: false };
     case 'testing': return { current: 3, complete: false };
     default: return { current: 0, complete: false };
   }
@@ -21,7 +24,8 @@ function stepState(agent: TicketAgentStatus | null): { current: number; complete
 
 function Steps({ agent }: { agent: TicketAgentStatus | null }) {
   const { current, complete } = stepState(agent);
-  const busy = agent?.phase === 'running' || agent?.phase === 'applying' || agent?.phase === 'testing';
+  const busy = agent?.phase === 'running' || agent?.phase === 'applying' || agent?.phase === 'testing' ||
+    agent?.pr?.phase === 'drafting' || agent?.pr?.phase === 'creating';
   return (
     <ol className={`steps${busy ? ' steps--busy' : ''}`} aria-label="Progress">
       {STEPS.map((label, i) => {
@@ -123,6 +127,7 @@ function AppliedBody({ agent }: { agent: TicketAgentStatus }) {
   const repair = agent.repair;
   const exhausted = !!repair && repair.attempt >= repair.max;
   const runTests = () => postMessage('runTicketTests', { id: agent.id });
+  const prOpen = !!agent.pr;
   return (
     <>
       <FileList agent={agent} interactive={false} />
@@ -133,7 +138,9 @@ function AppliedBody({ agent }: { agent: TicketAgentStatus }) {
           Passed after {repair.attempt} repair attempt{repair.attempt === 1 ? '' : 's'}.
         </p>
       )}
-      {canFix ? (
+      {/* An open PR draft or result takes the lead; test actions step back. */}
+      {prOpen && <PullRequestSection agent={agent} />}
+      {canFix && !prOpen ? (
         <>
           {exhausted && (
             <p className="card-text">
@@ -147,11 +154,18 @@ function AppliedBody({ agent }: { agent: TicketAgentStatus }) {
             </Button>
             <Button variant="secondary" block icon="play" onClick={runTests}>Run tests again</Button>
           </div>
+          <PullRequestSection agent={agent} />
         </>
       ) : (
-        <Button variant={outcome === 'passed' ? 'secondary' : 'primary'} block icon="play" onClick={runTests}>
-          {agent.testResult ? 'Run tests again' : 'Run tests'}
-        </Button>
+        <div className="stack">
+          {!prOpen && outcome === 'passed' && <PullRequestSection agent={agent} />}
+          {agent.pr?.phase !== 'creating' && agent.pr?.phase !== 'drafting' && (
+            <Button variant={outcome === 'passed' || prOpen ? 'secondary' : 'primary'} block icon="play" onClick={runTests}>
+              {agent.testResult ? 'Run tests again' : 'Run tests'}
+            </Button>
+          )}
+          {!prOpen && outcome !== 'passed' && <PullRequestSection agent={agent} />}
+        </div>
       )}
     </>
   );

@@ -8,6 +8,7 @@ import { CacheManager } from '../../engine/CacheManager';
 import { OpenAIClient } from '../../clients/OpenAIClient';
 import { AUTO_REPAIRS, TicketPreview } from '../../sidebar/TicketPreview';
 import { runProjectTests } from '../../engine/projectTests';
+import { git } from '../../engine/pullRequest';
 
 jest.mock('../../engine/projectTests', () => ({ runProjectTests: jest.fn() }));
 import { TicketAgentStatus, TicketData } from '../../types';
@@ -447,6 +448,117 @@ describe('ticket preview', () => {
       await applying;
       expect(statuses[statuses.length - 1].phase).toBe('applied');
       expect(await fs.readFile(path.join(root, target), 'utf8')).toBe(proposed);
+    });
+
+    describe('draft PR', () => {
+      let bare: string;
+      let requests: { url: string; method: string; body?: Record<string, unknown> }[];
+      let pushes: number;
+      let failPush: boolean;
+      let opened: string[];
+
+      async function previewWithGit() {
+        return new TicketPreview({ agentTurn }, {
+          indexWorkspace: jest.fn(), search: async () => [{ filePath: target, content: original, startLine: 0, endLine: 0 }],
+        }, status => statuses.push(status), undefined, {
+          chat: async () => JSON.stringify({ title: 'Explain empty lists', summary: 'Shows a message for an empty list.' }),
+          getGitHubToken: async () => 'token',
+          push: async (dir, branch) => {
+            pushes++;
+            if (failPush) { failPush = false; throw new Error('Authentication failed'); }
+            await git(dir, ['push', '-q', bare, branch]);
+          },
+          fetch: async (url, init) => {
+            requests.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : undefined });
+            const data = init.method === 'GET' ? { default_branch: 'main' } : { number: 7, html_url: 'https://github.com/acme/widgets/pull/7' };
+            return { ok: true, status: 200, json: async () => data };
+          },
+          openExternal: url => opened.push(url),
+        });
+      }
+
+      beforeEach(async () => {
+        requests = [];
+        pushes = 0;
+        failPush = false;
+        opened = [];
+        bare = await fs.mkdtemp(path.join(os.tmpdir(), 'ticket-remote-'));
+        await git(bare, ['init', '-q', '--bare']);
+        await git(root, ['init', '-q', '-b', 'main']);
+        await git(root, ['config', 'user.email', 'dev@example.com']);
+        await git(root, ['config', 'user.name', 'Dev']);
+        await git(root, ['add', target]);
+        await git(root, ['commit', '-q', '-m', 'Initial']);
+        await git(root, ['remote', 'add', 'origin', 'https://github.com/acme/widgets.git']);
+        preview = await previewWithGit();
+      });
+      afterEach(async () => { await fs.rm(bare, { recursive: true, force: true }); });
+
+      it('drafts, then commits the applied files, pushes and opens a draft PR', async () => {
+        await preview.start(ticket);
+        const id = statuses[statuses.length - 1].id;
+        await preview.apply(id);
+        await preview.draftPR(id);
+        const ready = statuses[statuses.length - 1];
+        expect(ready.pr).toMatchObject({ phase: 'ready', draft: {
+          title: 'DEMO-1: Explain empty lists', branch: 'ticket/DEMO-1-explain-an-empty-list',
+          base: 'the default branch', repo: 'acme/widgets' } });
+        expect(ready.pr?.draft?.body).toContain('Shows a message for an empty list.');
+        expect(ready.pr?.draft?.body).toContain('- `tests/list.test.ts` (new test)');
+        expect(pushes).toBe(0);
+        expect(requests).toEqual([]);
+
+        await preview.createPR(id, 'DEMO-1: Show a message for empty lists', 'Edited body');
+        const done = statuses[statuses.length - 1];
+        expect(done.pr).toMatchObject({ phase: 'created', number: 7, url: 'https://github.com/acme/widgets/pull/7',
+          draft: { base: 'main', title: 'DEMO-1: Show a message for empty lists' } });
+        expect(requests.map(r => `${r.method} ${r.url}`)).toEqual([
+          'GET https://api.github.com/repos/acme/widgets',
+          'POST https://api.github.com/repos/acme/widgets/pulls',
+        ]);
+        expect(requests[1].body).toEqual({ head: 'ticket/DEMO-1-explain-an-empty-list', base: 'main',
+          title: 'DEMO-1: Show a message for empty lists', body: 'Edited body', draft: true });
+        expect((await git(root, ['branch', '--show-current'])).trim()).toBe('ticket/DEMO-1-explain-an-empty-list');
+        expect((await git(root, ['log', '-1', '--format=%s'])).trim()).toBe('DEMO-1: Show a message for empty lists');
+        expect((await git(root, ['show', '--name-only', '--format=', 'HEAD'])).trim().split('\n').sort()).toEqual([target, testPath].sort());
+        expect((await git(bare, ['branch', '--list', 'ticket/*'])).trim()).toBe('ticket/DEMO-1-explain-an-empty-list');
+        expect(done.steps?.filter(step => step.kind === 'git').map(step => step.label)).toEqual([
+          'Committed 2 files on ticket/DEMO-1-explain-an-empty-list',
+          'Pushed ticket/DEMO-1-explain-an-empty-list to origin',
+          'Opened draft PR #7',
+        ]);
+        preview.openPR(id);
+        expect(opened).toEqual(['https://github.com/acme/widgets/pull/7']);
+      });
+
+      it('keeps the commit when the push fails and only pushes on retry', async () => {
+        failPush = true;
+        await preview.start(ticket);
+        const id = statuses[statuses.length - 1].id;
+        await preview.apply(id);
+        await preview.draftPR(id);
+        await preview.createPR(id, 'DEMO-1: Explain empty lists', 'Body');
+        const failed = statuses[statuses.length - 1];
+        expect(failed.pr).toMatchObject({ phase: 'ready', draft: { title: 'DEMO-1: Explain empty lists' } });
+        expect(failed.pr?.error).toMatch(/Authentication failed.*trying again will push it/);
+        expect(requests).toEqual([]);
+
+        await preview.createPR(id, 'DEMO-1: Explain empty lists', 'Body');
+        expect(statuses[statuses.length - 1].pr).toMatchObject({ phase: 'created', number: 7 });
+        expect(pushes).toBe(2);
+        expect((await git(root, ['rev-list', '--count', 'main..HEAD'])).trim()).toBe('1');
+      });
+
+      it('shows why a PR cannot be drafted and lets the developer cancel', async () => {
+        await git(root, ['remote', 'remove', 'origin']);
+        await preview.start(ticket);
+        const id = statuses[statuses.length - 1].id;
+        await preview.apply(id);
+        await preview.draftPR(id);
+        expect(statuses[statuses.length - 1].pr).toEqual({ phase: 'ready', error: 'Add a GitHub remote named origin to open draft PRs.' });
+        preview.cancelPR(id);
+        expect(statuses[statuses.length - 1].pr).toBeUndefined();
+      });
     });
 
     it('does not repair automatically after a manual test run', async () => {

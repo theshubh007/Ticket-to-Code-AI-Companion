@@ -46,7 +46,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     client: OpenAIClient
   ) {
     this.ticketPreview = new TicketPreview(client, _codeAnalyzer,
-      payload => this._post({ command: 'ticketAgent', payload }));
+      payload => this._post({ command: 'ticketAgent', payload }), undefined,
+      { chat: (messages, format) => client.chat(messages, format) });
   }
 
   public resolveWebviewView(
@@ -102,6 +103,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           case 'fixTicketTests':
             await this.ticketPreview.fixTests(message.payload.id, message.payload.instruction ?? '');
+            break;
+          case 'draftTicketPR':
+            await this.ticketPreview.draftPR(message.payload.id);
+            break;
+          case 'createTicketPR':
+            await this.ticketPreview.createPR(message.payload.id, message.payload.title, message.payload.body);
+            break;
+          case 'cancelTicketPR':
+            this.ticketPreview.cancelPR(message.payload.id);
+            break;
+          case 'openTicketPR':
+            this.ticketPreview.openPR(message.payload.id);
             break;
           case 'discardTicketChange':
             this.ticketPreview.discard(message.payload.id);

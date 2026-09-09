@@ -15,6 +15,7 @@ const KIND_ICON: Record<AgentStep['kind'], IconName> = {
   request: 'message',
   test: 'flask',
   repair: 'wrench',
+  git: 'pullRequest',
 };
 
 /** The agent's actions in order, newest last. While `live`, it follows the newest step. */

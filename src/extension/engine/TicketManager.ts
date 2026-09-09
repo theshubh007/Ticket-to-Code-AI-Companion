@@ -38,6 +38,7 @@ export class TicketManager {
       priority: raw.fields.priority?.name ?? 'Unknown',
       labels: raw.fields.labels ?? [],
       issueType: raw.fields.issuetype?.name ?? 'Unknown',
+      url: `${jiraConfig.baseUrl.replace(/\/+$/, '')}/browse/${encodeURIComponent(raw.key)}`,
     };
 
     await this.cache.saveTicket(issueKey, ticket);

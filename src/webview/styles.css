@@ -973,13 +973,14 @@ button.ticket-row:focus-visible {
 
 .steps {
   list-style: none;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
   gap: var(--space-1);
   padding: var(--space-3) var(--space-3) 0;
 }
 
 .step {
+  /* Each bar is at least as wide as its label, so short labels never get clipped. */
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -1028,7 +1029,8 @@ button.ticket-row:focus-visible {
 }
 
 /* In very narrow sidebars the bars alone carry the progress. */
-@media (max-width: 230px) {
+@media (max-width: 250px) {
+  .step { flex: 1 1 0; }
   .step-label { display: none; }
 }
 
@@ -1113,6 +1115,102 @@ button.file-row:focus-visible {
   text-overflow: ellipsis;
   direction: rtl; /* keep the end of long paths visible */
   text-align: left;
+}
+
+/* Draft pull request */
+
+.pr-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--radius-l);
+  background: var(--c-fill);
+  border: 1px solid var(--vscode-contrastBorder, var(--c-separator));
+}
+
+.pr-form-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: 2px;
+}
+
+.pr-form-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-m);
+  color: var(--tone-green);
+  background: color-mix(in srgb, var(--tone-green) 15%, transparent);
+  border: 1px solid var(--c-hc-border);
+}
+
+.pr-form-heading {
+  min-width: 0;
+}
+
+.pr-form-heading h3 {
+  font-size: var(--text-footnote);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.pr-branch {
+  font-size: var(--text-caption);
+  color: var(--c-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pr-branch code {
+  font-family: var(--font-mono);
+}
+
+.pr-label {
+  margin-top: 4px;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--c-text-2);
+}
+
+.pr-input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px var(--space-2);
+  border-radius: var(--radius-m);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--c-separator));
+  font: inherit;
+  font-size: var(--text-footnote);
+  line-height: 1.45;
+  outline: none;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+
+.pr-input:focus {
+  border-color: var(--c-focus);
+  box-shadow: 0 0 0 1px var(--c-focus);
+}
+
+.pr-input:disabled {
+  opacity: 0.6;
+}
+
+.pr-body {
+  resize: vertical;
+  min-height: 7rem;
+  max-height: 24rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+}
+
+.pr-form .stack {
+  margin-top: 4px;
 }
 
 /* Console output */

@@ -40,6 +40,7 @@ const PATHS = {
   arrowUp: <path d="M8 13V3.5M4 7.25 8 3.25l4 4" />,
   arrowDown: <path d="M8 3v9.5M4 8.75l4 4 4-4" />,
   equals: <path d="M3.5 6.25h9M3.5 9.75h9" />,
+  pullRequest: <><circle cx="4.5" cy="3.75" r="1.75" /><circle cx="4.5" cy="12.25" r="1.75" /><circle cx="11.5" cy="12.25" r="1.75" /><path d="M4.5 5.5v5M11.5 10.5V6.5a2 2 0 0 0-2-2H7.5M9 3 7.5 4.5 9 6" /></>,
   message: <path d="M3.75 2.75h8.5a1.5 1.5 0 0 1 1.5 1.5v5.5a1.5 1.5 0 0 1-1.5 1.5H7.5l-3 2.5v-2.5h-.75a1.5 1.5 0 0 1-1.5-1.5v-5.5a1.5 1.5 0 0 1 1.5-1.5Z" />,
 } as const;
 

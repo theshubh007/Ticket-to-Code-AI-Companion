@@ -6,8 +6,13 @@ import { OpenAIClient } from '../clients/OpenAIClient';
 import { CodeAnalyzer } from '../engine/CodeAnalyzer';
 import { AgentSession, fixFailingTests, proposeTicketChange, reviseTicketChange, TicketEdit, TicketProposal } from '../engine/TicketAgent';
 import { runProjectTests } from '../engine/projectTests';
+import {
+  commitOnBranch, defaultBranch, DescriptionInput, describe, draftText, FetchLike, git, inspectRepository,
+  openDraftPullRequest, RepositoryState,
+} from '../engine/pullRequest';
+import type { ChatMessage } from '../clients/OpenAIClient';
 import { walkWorkspace } from '../utils/fileWalker';
-import { AgentStep, ProjectTestResult, ProposalFile, TicketAgentStatus, TicketData } from '../types';
+import { AgentStep, ProjectTestResult, ProposalFile, PullRequestState, TicketAgentStatus, TicketData } from '../types';
 import { getWorkspaceRoot } from '../utils/editorNavigation';
 
 async function existingFile(root: string, relative: string): Promise<vscode.Uri> {
@@ -46,6 +51,43 @@ async function newTestUri(root: string, relative: string): Promise<vscode.Uri> {
 }
 
 const MAX_STEPS = 200;
+
+/** Services the draft PR flow needs; tests replace them. */
+export interface PullRequestDeps {
+  chat?: (messages: ChatMessage[], format: 'json') => Promise<string>;
+  getGitHubToken: () => Promise<string>;
+  push: (root: string, branch: string) => Promise<void>;
+  fetch: FetchLike;
+  openExternal: (url: string) => void;
+}
+
+interface GitRepositoryApi {
+  push(remote?: string, name?: string, setUpstream?: boolean): Promise<void>;
+}
+
+/** Push through VS Code's Git extension so the developer's existing sign-in is used. */
+async function pushBranch(root: string, branch: string) {
+  let repository: GitRepositoryApi | null | undefined;
+  try {
+    const extension = vscode.extensions.getExtension<{ getAPI(version: 1): { getRepository(uri: vscode.Uri): GitRepositoryApi | null } }>('vscode.git');
+    const exports = extension && (extension.isActive ? extension.exports : await extension.activate());
+    repository = exports?.getAPI(1).getRepository(vscode.Uri.file(root));
+  } catch {
+    repository = undefined;
+  }
+  if (repository) await repository.push('origin', branch, true);
+  else await git(root, ['push', '-u', 'origin', branch]);
+}
+
+const defaultPullRequestDeps: PullRequestDeps = {
+  async getGitHubToken() {
+    const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
+    return session.accessToken;
+  },
+  push: pushBranch,
+  fetch: (url, init) => fetch(url, init),
+  openExternal: url => { void vscode.env.openExternal(vscode.Uri.parse(url)); },
+};
 /** Repairs that start on their own after failing tests; the developer can ask for more. */
 export const AUTO_REPAIRS = 3;
 
@@ -74,13 +116,20 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
   /** Every file written by Apply for this ticket, across repair attempts. */
   private applied = new Map<string, ProposalFile>();
   private repairs = 0;
+  private ticket?: TicketData;
+  /** Git progress for the draft PR, so a retry after a failed push doesn't commit twice. */
+  private prRun?: { state: RepositoryState; summary: string; committed: boolean; pushed: boolean };
+  private readonly prDeps: PullRequestDeps;
 
   constructor(
     private readonly client: Pick<OpenAIClient, 'agentTurn'>,
     private readonly analyzer: Pick<CodeAnalyzer, 'indexWorkspace' | 'search'>,
     private readonly notify: (status: TicketAgentStatus) => void,
-    readonly scheme = 'ticket-to-code-preview'
-  ) {}
+    readonly scheme = 'ticket-to-code-preview',
+    prDeps: Partial<PullRequestDeps> = {}
+  ) {
+    this.prDeps = { ...defaultPullRequestDeps, ...prDeps };
+  }
 
   replay() {
     if (this.status) this.notify(this.status);
@@ -96,6 +145,8 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
     this.session = undefined;
     this.applied.clear();
     this.repairs = 0;
+    this.ticket = undefined;
+    this.prRun = undefined;
     if (this.revisionRun) this.revisionRun.cancelled = true;
     this.revisionRun = undefined;
   }
@@ -163,6 +214,7 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
   async start(ticket: TicketData) {
     if (this.status?.phase === 'applying' || this.status?.phase === 'running' || this.testRun) return;
     this.reset();
+    this.ticket = ticket;
     const id = randomUUID();
     const root = getWorkspaceRoot();
     this.root = root;
@@ -203,7 +255,7 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
     const session = this.session;
     const root = this.root;
     if (status?.id !== id || !session || !root || this.testRun || this.revisionRun || status.phase !== 'applied' ||
-        status.testResult?.outcome !== 'failed' || typeof instruction !== 'string') return;
+        status.testResult?.outcome !== 'failed' || this.prBusy() || typeof instruction !== 'string') return;
     const failure = status.testResult;
     const attempt = this.repairs + 1;
     const of = attempt <= AUTO_REPAIRS ? ` of ${AUTO_REPAIRS}` : '';
@@ -304,7 +356,7 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
 
   /** Run the project tests on the saved files. After an Apply, a failure starts a repair on its own. */
   async runTests(id: string, afterApply = false) {
-    if (this.status?.id !== id || this.status.phase !== 'applied' || !this.root || this.testRun) return;
+    if (this.status?.id !== id || this.status.phase !== 'applied' || !this.root || this.testRun || this.prBusy()) return;
     const controller = new AbortController();
     this.testRun = controller;
     this.update('testing', 'Checking the saved files…');
@@ -391,5 +443,115 @@ export class TicketPreview implements vscode.TextDocumentContentProvider {
     } catch (err) {
       if (this.status?.id === id) this.update('error', (err as Error).message);
     }
+  }
+
+  // ─── Draft pull request ──────────────────────────────────────────────
+
+  private prBusy() {
+    const phase = this.status?.pr?.phase;
+    return phase === 'drafting' || phase === 'creating';
+  }
+
+  private setPr(pr: PullRequestState | undefined) {
+    if (!this.status) return;
+    this.status = { ...this.status, pr };
+    this.notify(this.status);
+  }
+
+  private descriptionInput(): DescriptionInput {
+    return {
+      ticket: this.ticket!,
+      files: [...this.applied.values()],
+      coverage: this.status?.coverage,
+      testResult: this.status?.testResult,
+      repairs: this.repairs,
+    };
+  }
+
+  /** Write a PR title and description for the applied files and show them for confirmation. */
+  async draftPR(id: string) {
+    const status = this.status;
+    const pr = status?.pr;
+    if (status?.id !== id || status.phase !== 'applied' || !this.root || !this.ticket || !this.applied.size ||
+        this.testRun || this.revisionRun || (pr && !(pr.phase === 'ready' && !pr.draft))) return;
+    const root = this.root;
+    const ticket = this.ticket;
+    this.setPr({ phase: 'drafting' });
+    try {
+      const files = [...this.applied.keys()];
+      const state = this.prRun?.committed ? this.prRun.state : await inspectRepository(root, files, ticket.key, ticket.summary);
+      this.check(id);
+      const input = this.descriptionInput();
+      const text = await draftText(this.prDeps.chat, input, state.diff);
+      this.check(id);
+      this.prRun = { committed: false, pushed: false, ...this.prRun, state, summary: text.summary };
+      this.setPr({ phase: 'ready', draft: {
+        title: text.title, body: describe(input, text.summary), branch: state.branch,
+        base: state.currentOnRemote ? state.current : 'the default branch', repo: `${state.repo.owner}/${state.repo.repo}`,
+      } });
+    } catch (err) {
+      if (this.status?.id === id) this.setPr({ phase: 'ready', error: (err as Error).message });
+    }
+  }
+
+  /** Commit the applied files on the ticket branch, push it and open the draft PR. */
+  async createPR(id: string, title: string, body: string) {
+    const status = this.status;
+    const pr = status?.pr;
+    const run = this.prRun;
+    if (status?.id !== id || status.phase !== 'applied' || pr?.phase !== 'ready' || !pr.draft || !run || !this.root ||
+        typeof title !== 'string' || typeof body !== 'string') return;
+    const draft = { ...pr.draft, title: title.replace(/\s+/g, ' ').trim(), body };
+    if (!draft.title || draft.title.length > 256 || body.length > 60000) {
+      this.setPr({ ...pr, error: 'Give the PR a title under 256 characters and a description under 60,000.' });
+      return;
+    }
+    const root = this.root;
+    const { state } = run;
+    const files = [...this.applied.keys()];
+    this.setPr({ phase: 'creating', draft });
+    try {
+      if (!run.committed) {
+        for (const file of files) {
+          const doc = await vscode.workspace.openTextDocument(await existingFile(root, file));
+          if (doc.isDirty) throw new Error(`Save ${file} first so the PR matches your editor.`);
+        }
+        this.check(id);
+        await commitOnBranch(root, state, files, draft.title, run.summary);
+        run.committed = true;
+        this.addStep({ kind: 'git', ok: true, label: `Committed ${files.length} file${files.length === 1 ? '' : 's'} on ${state.branch}` });
+      }
+      if (!run.pushed) {
+        await this.prDeps.push(root, state.branch);
+        run.pushed = true;
+        this.addStep({ kind: 'git', ok: true, label: `Pushed ${state.branch} to origin` });
+      }
+      const token = await this.prDeps.getGitHubToken();
+      const base = state.currentOnRemote ? state.current : await defaultBranch(this.prDeps.fetch, token, state.repo);
+      const opened = await openDraftPullRequest(this.prDeps.fetch, token, state.repo,
+        { head: state.branch, base, title: draft.title, body: draft.body });
+      if (this.status?.id !== id) return;
+      this.addStep({ kind: 'git', ok: true, label: `Opened draft PR #${opened.number}`, detail: `into ${base}` });
+      this.setPr({ phase: 'created', draft: { ...draft, base }, number: opened.number, url: opened.url });
+    } catch (err) {
+      if (this.status?.id !== id) return;
+      const message = (err as Error).message;
+      this.addStep({ kind: 'git', ok: false, label: 'Couldn’t open the draft PR', detail: message.slice(0, 300) });
+      const resume = run.committed && !run.pushed
+        ? ` The commit is on ${state.branch}; trying again will push it.`
+        : run.pushed ? ` ${state.branch} is pushed; trying again will only open the PR.` : '';
+      this.setPr({ phase: 'ready', draft, error: message + resume });
+    }
+  }
+
+  cancelPR(id: string) {
+    if (this.status?.id !== id || this.status.pr?.phase !== 'ready') return;
+    if (this.prRun && !this.prRun.committed) this.prRun = undefined;
+    this.setPr(undefined);
+  }
+
+  openPR(id: string) {
+    const pr = this.status?.pr;
+    if (this.status?.id === id && pr?.phase === 'created' && pr.url) this.prDeps.openExternal(pr.url);
   }
 }

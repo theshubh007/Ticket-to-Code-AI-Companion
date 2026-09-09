@@ -17,6 +17,8 @@ export interface TicketData {
   priority: string;
   labels: string[];
   issueType: string;
+  /** Link to the issue in Jira, used in the draft PR description. */
+  url?: string;
 }
 
 // ─── Code Analysis ───────────────────────────────────────────────────────────
@@ -85,6 +87,8 @@ export type MessageFromWebview =
   | { command: 'reviseTicketChange'; payload: { id: string; instruction: string } }
   | { command: 'applyTicketChange' | 'discardTicketChange' | 'runTicketTests' | 'stopTicketTests'; payload: { id: string } }
   | { command: 'fixTicketTests'; payload: { id: string; instruction?: string } }
+  | { command: 'draftTicketPR' | 'cancelTicketPR' | 'openTicketPR'; payload: { id: string } }
+  | { command: 'createTicketPR'; payload: { id: string; title: string; body: string } }
   | { command: 'clearTicket' }
   | { command: 'ping' }
   | { command: 'getAISettings' }
@@ -142,9 +146,20 @@ export interface ProposalFile {
   isNew: boolean;
 }
 
+/** Progress of the draft pull request for applied changes. */
+export interface PullRequestState {
+  phase: 'drafting' | 'ready' | 'creating' | 'created';
+  /** The editable draft, shown for confirmation before anything is pushed. */
+  draft?: { title: string; body: string; branch: string; base: string; repo: string };
+  number?: number;
+  url?: string;
+  /** Why the last attempt failed; the draft stays so the developer can retry. */
+  error?: string;
+}
+
 /** One visible action in a proposal run, shown as a timeline in the ticket card. */
 export interface AgentStep {
-  kind: 'index' | 'search' | 'list' | 'read' | 'edit' | 'discard' | 'finish' | 'request' | 'test' | 'repair';
+  kind: 'index' | 'search' | 'list' | 'read' | 'edit' | 'discard' | 'finish' | 'request' | 'test' | 'repair' | 'git';
   label: string;
   detail?: string;
   /** false when the action failed; the agent usually corrects itself on the next turn. */
@@ -165,6 +180,7 @@ export interface TicketAgentStatus {
   canFix?: boolean;
   /** The latest repair attempt after failing tests, and how many run without asking. */
   repair?: { attempt: number; max: number };
+  pr?: PullRequestState;
   coverage?: string;
   existingTest?: { filePath: string; startLine: number; endLine: number };
   testResult?: ProjectTestResult;
