@@ -1,8 +1,8 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/src/extension'],
-  testMatch: ['**/__tests__/unit/**/*.test.ts'],
+  roots: ['<rootDir>/src/extension', '<rootDir>/src/webview'],
+  testMatch: ['**/src/extension/__tests__/unit/**/*.test.ts', '**/src/webview/**/__tests__/**/*.test.ts'],
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: 'tsconfig.extension.json',
